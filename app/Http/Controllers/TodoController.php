@@ -48,6 +48,30 @@ class TodoController extends Controller
     }
 
     /**
+     * TODOの編集フォームを表示する。
+     */
+    public function edit(Todo $todo)
+    {
+        return view('todos.edit', ['todo' => $todo]);
+    }
+
+    /**
+     * 編集フォームの内容でTODOを更新する。
+     */
+    public function update(Request $request, Todo $todo)
+    {
+        // ルールは作成時(store)と同一。挙動を揃えることが仕様(US-4)
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:100'],
+            'description' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $todo->update($validated);
+
+        return redirect()->route('todos.show', $todo)->with('status', 'TODOを更新しました。');
+    }
+
+    /**
      * TODOの詳細を表示する。
      *
      * 引数の型をTodoにするとLaravelがURLの{todo}からレコードを

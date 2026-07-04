@@ -12,5 +12,7 @@
 
     <p>作成日時: {{ $todo->created_at->format('Y-m-d H:i') }}</p>
 
+    <p><a href="{{ route('todos.edit', $todo) }}">このTODOを編集する</a></p>
+
     <p><a href="{{ route('todos.index') }}">← 一覧に戻る</a></p>
 @endsection
