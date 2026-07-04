@@ -30,8 +30,10 @@
 
 | ユーザーストーリー | ステップ(コミット) | PR |
 |---|---|---|
-| US-0 開発環境の再現 | 1-1([5621cfd](https://github.com/morisaki-yuichi/todo-app-example2/commit/5621cfd))、1-2([1c97590](https://github.com/morisaki-yuichi/todo-app-example2/commit/1c97590))、1-3([eb93e7c](https://github.com/morisaki-yuichi/todo-app-example2/commit/eb93e7c)) | [#1](https://github.com/morisaki-yuichi/todo-app-example2/pull/1) |
-| US-1〜US-6 | スプリント2以降 | - |
+| US-0 開発環境の再現 | 1-1([5621cfd](https://github.com/morisaki-yuichi/todo-app-example2/commit/5621cfd))、1-2([1c97590](https://github.com/morisaki-yuichi/todo-app-example2/commit/1c97590))、1-3([eb93e7c](https://github.com/morisaki-yuichi/todo-app-example2/commit/eb93e7c)) | [#1](https://github.com/morisaki-yuichi/todo-app-example2/pull/1)、[#2](https://github.com/morisaki-yuichi/todo-app-example2/pull/2) |
+| US-1 一覧を見る | 2-1([db050d7](https://github.com/morisaki-yuichi/todo-app-example2/commit/db050d7))、2-2([8e1b772](https://github.com/morisaki-yuichi/todo-app-example2/commit/8e1b772))、2-3([75ec45b](https://github.com/morisaki-yuichi/todo-app-example2/commit/75ec45b)) | [#3](https://github.com/morisaki-yuichi/todo-app-example2/pull/3) |
+| US-2 詳細を見る | 2-4([571473f](https://github.com/morisaki-yuichi/todo-app-example2/commit/571473f)) | [#3](https://github.com/morisaki-yuichi/todo-app-example2/pull/3) |
+| US-3〜US-6 | スプリント3以降 | - |
 
 ## コミットに残っていない出来事
 
@@ -44,6 +46,10 @@
 | `sail:install` が「no commands defined in the "sail" namespace」で失敗(インストーラがsailを同梱しなくなっていた) | [スプリント1レビュー記録](../01_sprint1/sprint-review.md) |
 | わざと失敗実験: APP_KEYを空にして500を観察 | このガイドの [実験1-A](#実験1-a-わざと失敗app_keyを空にして500を観察する) |
 | `.env` 変更直後にcurlが `000`(接続リセット)になった | [スプリント1レビュー記録](../01_sprint1/sprint-review.md) |
+| マージ後確認で500(laravel.logに出ない)→ コンテナログで特定し `sail restart` で復旧 | [スプリント1レビュー記録](../01_sprint1/sprint-review.md) |
+| クローン再現テストで3306衝突 → FORWARD_DB_PORTを明示 | [スプリント1レビュー記録](../01_sprint1/sprint-review.md)、[PR #2](https://github.com/morisaki-yuichi/todo-app-example2/pull/2) |
+| わざと失敗実験: $fillableなしでMassAssignmentException | このガイドの [実験2-A](#実験2-a-わざと失敗fillableなしでcreateしてみる) |
+| シーダーの3件が同一秒作成でlatest()の並びが不安定 → id第2ソートで安定化 | [ステップ2-3](#ステップ2-3-todo一覧画面を作る)、[スプリント2レビュー記録](../02_sprint2/sprint-review.md) |
 
 ---
 
@@ -342,3 +348,317 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/   # => 200
 1. 「鶏と卵問題」とは何が卵で何が鶏か。どう解決したか
 2. `.env` と `.env.example` の役割の違い。なぜ `.env` はコミットしないのか
 3. 500エラーが出たとき、最初に見るべき場所と読み方
+
+---
+
+# スプリント2: Read(一覧・詳細)
+
+**ゴール**: シーダーで投入したTODOが一覧・詳細で閲覧できる(存在しないIDは404)
+(計画: [スプリント2バックログ](../02_sprint2/sprint-backlog.md) / PR: [#3](https://github.com/morisaki-yuichi/todo-app-example2/pull/3))
+
+**開始前の準備**: `git switch main && git pull` してから `git switch -c feature/sprint2-read`
+
+このスプリントから**MVC**が登場します。先に
+[概念解説集の「MVCとリクエストの流れ」](laravel-concepts.md#11-mvcとリクエストの流れ)を読むと、
+以降のステップで「今どの層を作っているのか」を見失いません。
+
+---
+
+## ステップ2-1: todosテーブルとTodoモデルを作る
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/db050d7) / ローカル: `git show db050d7`
+- 【概念】[マイグレーションのup/down](laravel-concepts.md#13-マイグレーションのupdownとカラム定義) / [Eloquentと設定より規約](laravel-concepts.md#14-eloquentと設定より規約) / [$fillable](laravel-concepts.md#15-fillableとマスアサインメント) / [casts](laravel-concepts.md#16-casts型キャスト) / [tinker](laravel-concepts.md#17-tinker)
+
+### これから何を・なぜやるか
+
+画面より先に**データの置き場所(テーブル)と出し入れ口(モデル)**を作ります。
+内側(DB)から外側(画面)へ向かって作ると、各段階で「そこまでの部品だけ」を
+検証でき、問題の切り分けが簡単になるからです。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `app/Models/Todo.php` | **ジェネレータ**で生成後、**手で編集**($fillable・casts追加) |
+| `database/migrations/XXXX_create_todos_table.php` | **ジェネレータ**で生成後、**手で編集**(カラム定義追加) |
+
+```bash
+# 実行前に --help で現行仕様を確認する癖をつける(スプリント1レトロのTry)
+./vendor/bin/sail artisan make:model --help
+./vendor/bin/sail artisan make:model Todo -m    # -m: マイグレーションも同時生成
+```
+
+> **写経時の差異**: マイグレーションのファイル名の先頭は**生成日時のタイムスタンプ**です
+> (例: `2026_07_04_110541_...`)。あなたの環境では必ず別の名前になります。正常です。
+
+### 編集の順序とその理由
+
+1. **マイグレーションのup()にカラム定義を追加**(器が先):
+   `title` は `string('title', 100)`(DB層でも100文字制限)、`description` は
+   `text()->nullable()`(任意項目)、`completed` は `boolean()->default(false)`
+2. `sail artisan migrate` で適用し、**`migrate:rollback --step=1` → 再度 `migrate`** で
+   down()も検証(やり直しが安全にできるか先に確かめる)
+3. **モデルに `$fillable` と `casts()` を追加**(下の実験2-Aを先にやると、
+   $fillableがなぜ要るのか腹落ちします)
+
+### 実験2-A: わざと失敗($fillableなしでcreateしてみる)
+
+**実験前チェック**(スプリント1レトロのTry T-1): `git status` で今の状態を把握し、
+`curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/` が200であることを確認。
+
+モデルが空クラスのまま、tinkerで作成を試みます:
+
+```bash
+./vendor/bin/sail artisan tinker --execute="App\Models\Todo::create(['title' => 'テスト']);"
+```
+
+結果(エラーの1行目):
+
+```
+Illuminate\Database\Eloquent\MassAssignmentException
+  Add [title] to fillable property to allow mass assignment on [App\Models\Todo].
+```
+
+- 1行目に**例外の名前**(マスアサインメント例外)、2行目に**対処そのもの**が書いてあります。
+  Laravelのエラーは「読めば直せる」ものが多い — だからまず読む
+- なぜこんな安全装置があるのか(悪意ある入力で `is_admin=1` を書き込まれる攻撃例)は
+  [概念解説集15](laravel-concepts.md#15-fillableとマスアサインメント)へ
+
+モデルに `$fillable` と `casts()` を書いてから再実行し、成功することを確認します:
+
+```bash
+./vendor/bin/sail artisan tinker --execute="
+\$t = App\Models\Todo::create(['title' => 'tinker検証', 'completed' => 1]);
+var_dump(\$t->completed);   // => bool(true)  ← castsの効果(DBはtinyintでもPHPではbool)
+App\Models\Todo::query()->delete();  // 検証データの後片付け
+"
+```
+
+**なぜtinkerで確認するのか**: 画面(ルート・コントローラ・ビュー)を作る前に、
+**モデル層だけ**を単独で検証できるから。あとで画面がおかしくても
+「モデル層は検証済みなので、原因はそこより外側」と切り分けられます。
+
+**実験後チェック**: `git status` が実験前と同じで、curlが200のままであること。
+
+### ここでコミット
+
+```bash
+git add app/Models/Todo.php database/migrations/
+git commit -m "feat: todosテーブルとTodoモデルを追加"
+```
+
+- **粒度の理由**: マイグレーションとモデルは「Todoというデータの器」という1つの意味。
+  逆に、この後のシーダーは「ダミーデータ投入」という別の目的なので分ける
+- **メッセージの理由**: 初の機能追加なので `feat:`。本文にdown()検証と実験2-Aの
+  実施を書き、「動くことをどう確かめたか」を残した(実物: `git show db050d7 -s`)
+
+---
+
+## ステップ2-2: シーダーでダミーデータを入れる
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/8e1b772) / ローカル: `git show 8e1b772`
+- 【概念】[シーダー](laravel-concepts.md#18-シーダー)
+
+### これから何を・なぜやるか
+
+一覧画面を作る前に、表示するデータを用意します。手作業のINSERTではなくシーダーに
+するのは、**「誰でも・何度でも・同じデータを再現できる」**からです。
+データの中身は「完了/未完了」「内容あり/なし」を**わざと混在**させます —
+画面側の全分岐(完了表示・内容なし表示)を目視確認するためです。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `database/seeders/TodoSeeder.php` | **ジェネレータ**で生成後、**手で編集** |
+| `database/seeders/DatabaseSeeder.php` | **既存ファイルを手で編集**(TodoSeeder呼び出し・User生成削除) |
+
+```bash
+./vendor/bin/sail artisan make:seeder TodoSeeder
+```
+
+### 編集の順序とその理由
+
+1. `TodoSeeder::run()` に3件の `Todo::create` を書く。先頭で `Todo::query()->delete()`
+   して入れ直す方式にする(**再実行しても増殖しない**=冪等にするため)
+2. `DatabaseSeeder` から `$this->call([TodoSeeder::class])` で呼ぶ
+   (`db:seed` だけで全部入る入口を1つに保つ)。認証はスコープ外なので
+   雛形にあったUser生成は削除
+
+### 動作確認(CLI)
+
+```bash
+./vendor/bin/sail artisan db:seed
+./vendor/bin/sail artisan db:seed   # わざと2回実行
+./vendor/bin/sail artisan tinker --execute="echo App\Models\Todo::count();"  # => 3(6ではない)
+```
+
+**なぜ2回実行するのか**: 冪等性の確認。写経中は「エラーで途中まで入った」等で
+シーダーを何度も叩くことになるため、再実行に強いことを最初に確かめておきます。
+
+### ここでコミット
+
+```bash
+git add database/seeders/
+git commit -m "feat: TodoSeederで動作確認用ダミーデータを投入可能に"
+```
+
+- **粒度の理由**: 「ダミーデータの仕組み」で1つの意味。モデルとは目的が違う
+- **メッセージの理由**: 「何を入れるか」より「なぜその構成のデータか
+  (全表示分岐の目視用)」を本文に残した
+
+---
+
+## ステップ2-3: TODO一覧画面を作る
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/75ec45b) / ローカル: `git show 75ec45b`
+- 【概念】[MVCとリクエストの流れ](laravel-concepts.md#11-mvcとリクエストの流れ) / [ルーティングと名前つきルート](laravel-concepts.md#12-ルーティングと名前つきルート) / [Blade](laravel-concepts.md#19-bladeテンプレートextendsyield--のxss対策)
+
+### これから何を・なぜやるか
+
+いよいよMVCを1周します。**ルート→コントローラ→ビュー**の順で作ります。
+リクエストが通る順(外から内)に書いていくと、「今どこまで通じているか」を
+段階的に確認でき、エラーが出ても最後に書いた場所が原因だと分かるからです。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `app/Http/Controllers/TodoController.php` | **ジェネレータ**で生成後、**手で編集** |
+| `routes/web.php` | **既存ファイルを手で編集** |
+| `resources/views/layouts/app.blade.php` | **手で新規作成** |
+| `resources/views/todos/index.blade.php` | **手で新規作成** |
+
+```bash
+./vendor/bin/sail artisan make:controller TodoController
+```
+
+### 編集の順序とその理由
+
+1. **ルート**: `routes/web.php` に `Route::get('/todos', [TodoController::class, 'index'])->name('todos.index');`
+2. **コントローラ**: `index()` で `Todo::orderByDesc('created_at')->orderByDesc('id')->get()`
+   を取得してビューへ渡す
+3. **レイアウト** `layouts/app.blade.php`: 全ページ共通のHTML骨格(@yieldで差し込み口)
+4. **一覧ビュー** `todos/index.blade.php`: @extendsでレイアウトを継承し、
+   0件なら案内文、あれば`<ul>`で列挙
+
+> **実録(なぜidの第2ソートがあるのか)**: 当初は `latest()`(created_at降順)だけの
+> 予定でしたが、tinkerで `latest()->first()` を実行したら**一番古い「牛乳を買う」が
+> 返ってきました**。シーダーの3件は同一秒に作られるため created_at が同値になり、
+> 並びが不定になっていたのです。「思い込みではなく実データで検証」が効いた場面で、
+> 対処として id を第2ソートキーに追加しました。
+
+> **重要**: この時点では一覧のタイトルに**リンクを張りません**。詳細ページがまだ
+> 存在しないからです(「未実装ルートへのリンクを含めない」ルール。リンクを張るのは
+> 行き先ができる次のステップ)。
+
+### 動作確認(ブラウザ)
+
+- http://localhost:8080/todos を開く
+- **正常系**: 3件が「部屋の掃除 → Laravel教材… → 牛乳を買う」の順(新しい順)で並び、
+  「Laravel教材…」にだけ「(完了)」が付く
+- **異常系(0件)**: tinkerで `Todo::query()->delete()` してからリロードすると
+  「TODOがありません。」が出る。確認後 `db:seed` で戻す
+
+### 動作確認(CLI)
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/todos   # => 200
+curl -s http://localhost:8080/todos | grep '<li>' 
+```
+
+### よくあるエラーと症状の対応表
+
+| 症状 | 原因 → 対処 |
+|---|---|
+| `Target class [TodoController] does not exist.` | ルートで `use App\Http\Controllers\TodoController;` を書き忘れ(コピペ時に落としがち) |
+| `View [todos.index] not found.` | ビューのファイル名・置き場所の不一致。`todos.index` = `resources/views/todos/index.blade.php`(ドット=ディレクトリ区切り) |
+| 一覧は出るが並びがおかしい | created_at が同値(シーダー由来)。第2ソートキーを確認 |
+| `Undefined variable $todos` | コントローラからビューへの受け渡し漏れ(`view('todos.index', ['todos' => $todos])`) |
+
+### ここでコミット
+
+```bash
+git add routes/web.php app/Http/Controllers/TodoController.php resources/views/
+git commit -m "feat: TODO一覧画面を追加"
+```
+
+- **粒度の理由**: ルート+コントローラ+ビュー=「一覧が見られる」という1つの意味。
+  層ごとにコミットを割ると「中途半端でどこにも遷移できない」状態が履歴に残ってしまう
+- **メッセージの理由**: 本文に並び順の実録(第2ソートキーの理由)を残した。
+  コードだけ見ると「なぜidでもソート?」と疑問になる箇所だから
+
+---
+
+## ステップ2-4: TODO詳細画面とリンクを作る
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/571473f) / ローカル: `git show 571473f`
+- 【概念】[ルートモデルバインディングと404](laravel-concepts.md#20-ルートモデルバインディングと404)
+
+### これから何を・なぜやるか
+
+詳細画面(`/todos/{id}`)を作り、**最後に**一覧からリンクを張ります。
+「行き先を作ってからリンクを張る」順なら、リンク切れの状態がコミットに残りません。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `routes/web.php` | **手で編集**(showルート追加) |
+| `app/Http/Controllers/TodoController.php` | **手で編集**(showメソッド追加) |
+| `resources/views/todos/show.blade.php` | **手で新規作成** |
+| `resources/views/todos/index.blade.php` | **手で編集**(タイトルをリンク化) |
+
+### 編集の順序とその理由
+
+1. ルート: `Route::get('/todos/{todo}', ...)->name('todos.show');`
+2. コントローラ: `public function show(Todo $todo)` — 引数を**Todo型**にするだけで、
+   URLの `{todo}` に対応するレコードをLaravelが自動取得(ルートモデルバインディング)。
+   見つからなければ**自動で404**
+3. 詳細ビュー: タイトル・状態・内容(なければ「(内容はありません)」)・作成日時・一覧へ戻るリンク
+4. 一覧ビューのタイトルを `route('todos.show', $todo)` でリンク化(行き先ができたので解禁)
+
+### 動作確認(ブラウザ)
+
+- 一覧の「部屋の掃除」をクリック → 詳細が開き「状態: 未完了」「(内容はありません)」
+- 「牛乳を買う」の詳細 → 内容が**改行されて**2行で表示される
+- **異常系**: URLを `/todos/99999` に書き換える → Laravelの404ページ
+
+### 動作確認(CLI)
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/todos/99999  # => 404
+# 存在するIDでの200確認(IDは環境で違うので、まずtinkerで実IDを取る)
+./vendor/bin/sail artisan tinker --execute="echo App\Models\Todo::first()->id;"
+```
+
+**なぜ404を確認するのか**: 「存在しないIDで500(サーバエラー)になる」実装は
+攻撃者にスタックトレースを見せる事故につながります。404(見つからない)と
+500(壊れている)の区別は、利用者にもセキュリティにも重要です。
+
+> **写経時の差異**: レコードIDは実験・シーダー再実行の回数で変わります
+> (本リポジトリでもこの時点のIDは1〜3ではなく8〜10でした)。
+> 「ID=1のはず」と決め打ちせず、一覧からのリンクかtinkerで実IDを確認する癖を。
+
+### ここでコミット
+
+```bash
+git status    # 変更ファイルが意図どおりか見る
+git add -A
+git commit -m "feat: TODO詳細画面と一覧からのリンクを追加"
+```
+
+- **粒度の理由**: 「詳細が見られる+そこへ辿り着ける」で1つの意味。
+  リンク追加だけを別コミットにすると、間のコミットが「作ったのに辿り着けない画面」になる
+- **メッセージの理由**: 本文に「行き先を先に作る順序」の意図を残した
+
+---
+
+## スプリント2の振り返り課題(写経者向け)
+
+回答例は[スプリント2レトロスペクティブ](../02_sprint2/sprint-retrospective.md)にあります。
+
+1. `/todos` をブラウザで開いてから画面が出るまで、リクエストはどの層を
+   どの順に通るか(ルート・コントローラ・モデル・ビューを使って)
+2. `$fillable` は何を防ぐ仕組みか。なければどんな攻撃が可能になるか
+3. 「画面を作る前にtinkerで検証する」ことの利点を、切り分けの観点で説明せよ
