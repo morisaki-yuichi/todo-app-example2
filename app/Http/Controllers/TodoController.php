@@ -72,6 +72,21 @@ class TodoController extends Controller
     }
 
     /**
+     * TODOの完了/未完了を切り替える。
+     *
+     * PUTではなくPATCHなのは「リソースの一部だけを変更する」操作のため。
+     * 入力値は使わない(現在値の反転)のでバリデーションは不要。
+     */
+    public function toggle(Todo $todo)
+    {
+        $todo->update(['completed' => ! $todo->completed]);
+
+        $message = $todo->completed ? 'TODOを完了にしました。' : 'TODOを未完了に戻しました。';
+
+        return redirect()->route('todos.index')->with('status', $message);
+    }
+
+    /**
      * TODOの詳細を表示する。
      *
      * 引数の型をTodoにするとLaravelがURLの{todo}からレコードを
