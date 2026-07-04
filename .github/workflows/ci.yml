@@ -1,0 +1,57 @@
+# PR・mainへのpush時に自動テストを走らせるCI。
+# ローカルのSail(Docker)と同じことを、GitHubの用意するUbuntu上で行う。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # テスト用のMySQLを、CI専用のサービスコンテナとして起動する。
+    # ローカルのSailでmysqlコンテナを立てるのと同じ役割。
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: testing
+          MYSQL_ROOT_PASSWORD: password
+        ports:
+          - 3306:3306
+        # DBが受付可能になるまで待つ(準備前にテストを始めると接続エラーになる)
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -ppassword"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHPをセットアップ
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql
+          coverage: none
+
+      - name: Composer依存をインストール(ロックに従い再現)
+        run: composer install --no-interaction --prefer-dist
+
+      - name: .envを用意してAPP_KEYを発行
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: テストを実行
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: testing
+          DB_USERNAME: root
+          DB_PASSWORD: password
+        run: php artisan test
