@@ -211,7 +211,8 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/   # => 200
 
 | 症状 | 原因 → 対処 |
 |---|---|
-| `port is already allocated` | ホスト側ポート衝突 → `.env` のAPP_PORT等を空きポートへ変更し `sail up -d` |
+| `port is already allocated` | ホスト側ポート衝突 → `.env` のAPP_PORT等を空きポートへ変更し `sail up -d`。**mysqlコンテナで出た場合は3306の衝突**(別のMySQL/Sailが動いている)→ `FORWARD_DB_PORT` を3307等に変更(実録: レビュー時のクローン再現テストで発生) |
+| 全ページ500だが `laravel.log` に何も出ない | アプリより外側の問題。1段外側の**コンテナのログ**を見る: `sail logs laravel.test`(実録: 開発サーバのプロセス状態が壊れ `Failed opening required '/index.php'` → `sail restart` で復旧) |
 | migrate時 `Connection refused` | MySQL初期化がまだ → `sail ps` で healthy を待って再実行 |
 | migrate時 `Access denied for user` | MySQLボリュームに**古い初期化データ**が残っている(DB名やパスワードを初回起動後に変えた場合)→ `sail down -v` でボリュームごと作り直す(**データは消える**) |
 | 500エラー | APP_KEY未設定の可能性 → 実験1-Aの手順でログを読む |
