@@ -10,9 +10,9 @@
     @if ($todos->isEmpty())
         <p>TODOがありません。</p>
     @else
-        <ul>
+        <ul class="todo-list">
             @foreach ($todos as $todo)
-                <li>
+                <li class="{{ $todo->completed ? 'completed' : '' }}">
                     <a href="{{ route('todos.show', $todo) }}">{{ $todo->title }}</a>
                     @if ($todo->completed)
                         (完了)

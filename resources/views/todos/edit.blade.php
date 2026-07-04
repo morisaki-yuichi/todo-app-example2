@@ -6,7 +6,7 @@
     <h2>TODOの編集</h2>
 
     @if ($errors->any())
-        <ul>
+        <ul class="errors">
             @foreach ($errors->all() as $error)
                 <li>{{ $error }}</li>
             @endforeach
