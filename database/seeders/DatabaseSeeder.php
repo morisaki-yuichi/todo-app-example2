@@ -15,7 +15,13 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // 認証機能は本プロジェクトのスコープ外のため、Userのダミーは作らない
+        // 写経者がすぐログインを試せるデモユーザー(パスワードは自動でハッシュ化される)。
+        // updateOrCreateで再実行しても重複しない(emailがunique)
+        User::updateOrCreate(
+            ['email' => 'demo@example.com'],
+            ['name' => 'デモユーザー', 'password' => 'password'],
+        );
+
         $this->call([
             TodoSeeder::class,
         ]);

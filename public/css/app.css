@@ -83,6 +83,12 @@ button:hover {
     background: #235a94;
 }
 
+/* ヘッダーのユーザーバー */
+.user-bar {
+    font-size: 0.9rem;
+    color: #555;
+}
+
 /* 絞り込みフォーム */
 form.filter {
     display: flex;
