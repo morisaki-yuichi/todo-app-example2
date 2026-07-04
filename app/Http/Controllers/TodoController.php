@@ -35,8 +35,12 @@ class TodoController extends Controller
             });
         }
 
-        // 新しい順。同一秒作成に備えてidを第2ソートキーにする(スプリント2の実録)
-        $todos = $query->orderByDesc('created_at')->orderByDesc('id')->get();
+        // 新しい順。同一秒作成に備えてidを第2ソートキーにする(スプリント2の実録)。
+        // paginate(5)で5件ずつに分割。withQueryString()を付けると、ページ移動リンクに
+        // 現在の絞り込み条件(status/keyword)が引き継がれる(付けないと2ページ目で条件が消える)
+        $todos = $query->orderByDesc('created_at')->orderByDesc('id')
+            ->paginate(5)
+            ->withQueryString();
 
         return view('todos.index', [
             'todos' => $todos,

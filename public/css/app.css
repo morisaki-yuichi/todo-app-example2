@@ -98,6 +98,23 @@ form.filter select, form.filter input[type="text"] {
     border-radius: 4px;
 }
 
+/* ページネーション */
+nav.pagination {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-top: 16px;
+}
+
+nav.pagination .disabled {
+    color: #bbb;
+}
+
+nav.pagination .current {
+    color: #666;
+    font-size: 0.9rem;
+}
+
 /* フラッシュメッセージ(操作成功の通知) */
 p[role="status"] {
     background: #e6f4ea;

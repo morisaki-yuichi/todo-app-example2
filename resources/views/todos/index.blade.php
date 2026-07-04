@@ -50,5 +50,8 @@
                 </li>
             @endforeach
         </ul>
+
+        {{-- ページ移動リンク。標準ビューはCSSフレームワーク前提なので自前ビューを指定 --}}
+        {{ $todos->links('pagination.simple') }}
     @endif
 @endsection
