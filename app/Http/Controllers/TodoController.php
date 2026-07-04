@@ -87,6 +87,27 @@ class TodoController extends Controller
     }
 
     /**
+     * 削除の確認ページを表示する(表示するだけ。まだ消さない)。
+     *
+     * JSのconfirm()を使わない本プロジェクトでは、誤操作防止の
+     * 確認ステップを「確認ページ」として実装する。
+     */
+    public function confirmDestroy(Todo $todo)
+    {
+        return view('todos.confirm-destroy', ['todo' => $todo]);
+    }
+
+    /**
+     * TODOを削除する(確認ページのフォームからのDELETEでのみ実行される)。
+     */
+    public function destroy(Todo $todo)
+    {
+        $todo->delete();
+
+        return redirect()->route('todos.index')->with('status', 'TODOを削除しました。');
+    }
+
+    /**
      * TODOの詳細を表示する。
      *
      * 引数の型をTodoにするとLaravelがURLの{todo}からレコードを

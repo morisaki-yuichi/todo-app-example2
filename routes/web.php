@@ -16,3 +16,6 @@ Route::get('/todos/{todo}', [TodoController::class, 'show'])->name('todos.show')
 Route::get('/todos/{todo}/edit', [TodoController::class, 'edit'])->name('todos.edit');
 Route::put('/todos/{todo}', [TodoController::class, 'update'])->name('todos.update');
 Route::patch('/todos/{todo}/toggle', [TodoController::class, 'toggle'])->name('todos.toggle');
+// 確認ページ(GET=表示するだけ)と削除の実行(DELETE)を分ける。GETでデータを変えない
+Route::get('/todos/{todo}/delete', [TodoController::class, 'confirmDestroy'])->name('todos.confirmDestroy');
+Route::delete('/todos/{todo}', [TodoController::class, 'destroy'])->name('todos.destroy');
