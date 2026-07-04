@@ -42,8 +42,9 @@ class TodoController extends Controller
         $todo = Todo::create($validated);
 
         // PRGパターン: POSTの結果は「リダイレクト」で返す。
-        // 直接HTMLを返すと、ブラウザのリロードでPOSTが再送されて二重登録される
-        return redirect()->route('todos.index');
+        // 直接HTMLを返すと、ブラウザのリロードでPOSTが再送されて二重登録される。
+        // with()はフラッシュデータ: 次の1リクエストだけ生きるセッション値
+        return redirect()->route('todos.index')->with('status', 'TODOを作成しました。');
     }
 
     /**
