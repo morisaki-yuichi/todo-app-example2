@@ -18,7 +18,8 @@ class TodoController extends Controller
         $status = $request->query('status', 'all');   // all / open / done
         $keyword = $request->query('keyword', '');
 
-        $query = Todo::query();
+        // 自分のTODOだけを対象にする(認可の第一歩=そもそも他人のは取得しない)
+        $query = $request->user()->todos();
 
         if ($status === 'open') {
             $query->where('completed', false);
@@ -70,7 +71,8 @@ class TodoController extends Controller
             'due_date' => ['nullable', 'date'], // 任意・過去日も許可(qa-log参照)
         ]);
 
-        $todo = Todo::create($validated);
+        // 作成者を所有者にする。リレーション経由で作るとuser_idが自動でセットされる
+        $todo = $request->user()->todos()->create($validated);
 
         // PRGパターン: POSTの結果は「リダイレクト」で返す。
         // 直接HTMLを返すと、ブラウザのリロードでPOSTが再送されて二重登録される。
@@ -83,6 +85,9 @@ class TodoController extends Controller
      */
     public function edit(Todo $todo)
     {
+        // 持ち主でなければ403(TodoPolicy::update)
+        $this->authorize('update', $todo);
+
         return view('todos.edit', ['todo' => $todo]);
     }
 
@@ -91,6 +96,8 @@ class TodoController extends Controller
      */
     public function update(Request $request, Todo $todo)
     {
+        $this->authorize('update', $todo);
+
         // ルールは作成時(store)と同一。挙動を揃えることが仕様(US-4)
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:100'],
@@ -111,6 +118,8 @@ class TodoController extends Controller
      */
     public function toggle(Todo $todo)
     {
+        $this->authorize('update', $todo);
+
         $todo->update(['completed' => ! $todo->completed]);
 
         $message = $todo->completed ? 'TODOを完了にしました。' : 'TODOを未完了に戻しました。';
@@ -126,6 +135,8 @@ class TodoController extends Controller
      */
     public function confirmDestroy(Todo $todo)
     {
+        $this->authorize('delete', $todo);
+
         return view('todos.confirm-destroy', ['todo' => $todo]);
     }
 
@@ -134,6 +145,8 @@ class TodoController extends Controller
      */
     public function destroy(Todo $todo)
     {
+        $this->authorize('delete', $todo);
+
         $todo->delete();
 
         return redirect()->route('todos.index')->with('status', 'TODOを削除しました。');
@@ -148,6 +161,8 @@ class TodoController extends Controller
      */
     public function show(Todo $todo)
     {
+        $this->authorize('view', $todo);
+
         return view('todos.show', ['todo' => $todo]);
     }
 }

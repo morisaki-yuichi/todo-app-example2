@@ -11,17 +11,20 @@ class TodoUpdateTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected User $user;
+
     protected function setUp(): void
     {
         parent::setUp();
-        // スプリント7で認証必須にしたため、各テストの前にログイン状態を作る。
-        // このアプリでは誰がログインしていてもTODOは共通(所有権はスプリント8)
-        $this->actingAs(User::factory()->create());
+        // 各テストの前にユーザーを作ってログイン。以降のTODOはこの人の所有にする
+        // (スプリント8で認可を入れたため、他人のTODOは403になる)
+        $this->user = User::factory()->create();
+        $this->actingAs($this->user);
     }
 
     public function test_can_update_todo(): void
     {
-        $todo = Todo::factory()->create(['title' => '古いタイトル']);
+        $todo = Todo::factory()->for($this->user)->create(['title' => '古いタイトル']);
 
         $response = $this->put("/todos/{$todo->id}", [
             'title' => '新しいタイトル',
@@ -37,7 +40,7 @@ class TodoUpdateTest extends TestCase
 
     public function test_update_validates_like_create(): void
     {
-        $todo = Todo::factory()->create(['title' => '元のまま']);
+        $todo = Todo::factory()->for($this->user)->create(['title' => '元のまま']);
 
         $this->put("/todos/{$todo->id}", ['title' => ''])
             ->assertSessionHasErrors('title');
@@ -48,7 +51,7 @@ class TodoUpdateTest extends TestCase
 
     public function test_can_toggle_completed(): void
     {
-        $todo = Todo::factory()->create(['completed' => false]);
+        $todo = Todo::factory()->for($this->user)->create(['completed' => false]);
 
         $this->patch("/todos/{$todo->id}/toggle")->assertRedirect('/todos');
         $this->assertTrue($todo->fresh()->completed);
