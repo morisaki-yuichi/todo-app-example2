@@ -11,12 +11,15 @@ class TodoFilterTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected User $user;
+
     protected function setUp(): void
     {
         parent::setUp();
-        // スプリント7で認証必須にしたため、各テストの前にログイン状態を作る。
-        // このアプリでは誰がログインしていてもTODOは共通(所有権はスプリント8)
-        $this->actingAs(User::factory()->create());
+        // 各テストの前にユーザーを作ってログイン。以降のTODOはこの人の所有にする
+        // (スプリント8で認可を入れたため、他人のTODOは403になる)
+        $this->user = User::factory()->create();
+        $this->actingAs($this->user);
     }
 
     public function test_status_filter_shows_only_matching(): void
@@ -24,8 +27,8 @@ class TodoFilterTest extends TestCase
         // タイトルは部分文字列で重ならないものを選ぶ。
         // 例えば「未完了タスク」は「完了タスク」を含むため、assertDontSeeが
         // 誤反応する(スプリント6の実録トラブル)。無関係な語にする
-        Todo::factory()->create(['title' => '牛乳を買う', 'completed' => false]);
-        Todo::factory()->completed()->create(['title' => '部屋の掃除']);
+        Todo::factory()->for($this->user)->create(['title' => '牛乳を買う', 'completed' => false]);
+        Todo::factory()->for($this->user)->completed()->create(['title' => '部屋の掃除']);
 
         // 未完了のみ
         $this->get('/todos?status=open')
@@ -40,9 +43,9 @@ class TodoFilterTest extends TestCase
 
     public function test_keyword_matches_title_and_description(): void
     {
-        Todo::factory()->create(['title' => '牛乳を買う', 'description' => 'スーパーで']);
-        Todo::factory()->create(['title' => '掃除', 'description' => '牛乳をこぼした跡']);
-        Todo::factory()->create(['title' => '散歩', 'description' => '公園まで']);
+        Todo::factory()->for($this->user)->create(['title' => '牛乳を買う', 'description' => 'スーパーで']);
+        Todo::factory()->for($this->user)->create(['title' => '掃除', 'description' => '牛乳をこぼした跡']);
+        Todo::factory()->for($this->user)->create(['title' => '散歩', 'description' => '公園まで']);
 
         // タイトル・内容どちらの一致もヒットする
         $response = $this->get('/todos?keyword=' . urlencode('牛乳'));
@@ -51,7 +54,7 @@ class TodoFilterTest extends TestCase
 
     public function test_invalid_status_is_treated_as_all(): void
     {
-        Todo::factory()->create(['title' => 'あるTODO']);
+        Todo::factory()->for($this->user)->create(['title' => 'あるTODO']);
 
         // 想定外の値でも500にせず全件表示
         $this->get('/todos?status=hack')->assertOk()->assertSee('あるTODO');
@@ -65,14 +68,14 @@ class TodoFilterTest extends TestCase
 
     public function test_overdue_is_highlighted(): void
     {
-        Todo::factory()->overdue()->create(['title' => '期限切れタスク']);
+        Todo::factory()->for($this->user)->overdue()->create(['title' => '期限切れタスク']);
 
         $this->get('/todos')->assertSee('期限切れ');
     }
 
     public function test_pagination_limits_to_five_per_page(): void
     {
-        Todo::factory()->count(7)->create();
+        Todo::factory()->for($this->user)->count(7)->create();
 
         // 1ページ5件+2件目のページが存在する
         $this->get('/todos')->assertSee('次へ');

@@ -19,6 +19,7 @@ class Todo extends Model
         'description',
         'due_date',
         'completed',
+        'user_id',
     ];
 
     /**
@@ -44,5 +45,13 @@ class Todo extends Model
         return $this->due_date !== null
             && ! $this->completed
             && $this->due_date->lt(today());
+    }
+
+    /**
+     * このTODOの持ち主。todos.user_id が users.id を指す(多対1)。
+     */
+    public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 }

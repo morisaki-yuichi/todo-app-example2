@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Todo;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -20,6 +21,8 @@ class TodoFactory extends Factory
     public function definition(): array
     {
         return [
+            // user_idを指定しないテストでは、その場で新しいユーザーを作って紐付ける
+            'user_id' => User::factory(),
             'title' => fake()->realText(20),
             'description' => fake()->optional()->realText(50),
             'due_date' => null,

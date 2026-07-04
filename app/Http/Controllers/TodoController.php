@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreTodoRequest;
+use App\Http\Requests\UpdateTodoRequest;
 use App\Models\Todo;
 use Illuminate\Http\Request;
 
@@ -18,7 +20,8 @@ class TodoController extends Controller
         $status = $request->query('status', 'all');   // all / open / done
         $keyword = $request->query('keyword', '');
 
-        $query = Todo::query();
+        // 自分のTODOだけを対象にする(認可の第一歩=そもそも他人のは取得しない)
+        $query = $request->user()->todos();
 
         if ($status === 'open') {
             $query->where('completed', false);
@@ -60,17 +63,14 @@ class TodoController extends Controller
     /**
      * フォームから送られたTODOを保存する。
      */
-    public function store(Request $request)
+    public function store(StoreTodoRequest $request)
     {
-        // 違反時はここで処理が止まり、エラーと入力値(old)を持って
-        // 自動でフォームへ302リダイレクトされる(自動差し戻し)
-        $validated = $request->validate([
-            'title' => ['required', 'string', 'max:100'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'due_date' => ['nullable', 'date'], // 任意・過去日も許可(qa-log参照)
-        ]);
+        // FormRequestが検証済み。違反時はコントローラに入る前に自動差し戻しされる。
+        // validated()で「ルールを通った値だけ」を取り出せる
+        $validated = $request->validated();
 
-        $todo = Todo::create($validated);
+        // 作成者を所有者にする。リレーション経由で作るとuser_idが自動でセットされる
+        $todo = $request->user()->todos()->create($validated);
 
         // PRGパターン: POSTの結果は「リダイレクト」で返す。
         // 直接HTMLを返すと、ブラウザのリロードでPOSTが再送されて二重登録される。
@@ -83,22 +83,20 @@ class TodoController extends Controller
      */
     public function edit(Todo $todo)
     {
+        // 持ち主でなければ403(TodoPolicy::update)
+        $this->authorize('update', $todo);
+
         return view('todos.edit', ['todo' => $todo]);
     }
 
     /**
      * 編集フォームの内容でTODOを更新する。
      */
-    public function update(Request $request, Todo $todo)
+    public function update(UpdateTodoRequest $request, Todo $todo)
     {
-        // ルールは作成時(store)と同一。挙動を揃えることが仕様(US-4)
-        $validated = $request->validate([
-            'title' => ['required', 'string', 'max:100'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'due_date' => ['nullable', 'date'],
-        ]);
+        $this->authorize('update', $todo);
 
-        $todo->update($validated);
+        $todo->update($request->validated());
 
         return redirect()->route('todos.show', $todo)->with('status', 'TODOを更新しました。');
     }
@@ -111,6 +109,8 @@ class TodoController extends Controller
      */
     public function toggle(Todo $todo)
     {
+        $this->authorize('update', $todo);
+
         $todo->update(['completed' => ! $todo->completed]);
 
         $message = $todo->completed ? 'TODOを完了にしました。' : 'TODOを未完了に戻しました。';
@@ -126,6 +126,8 @@ class TodoController extends Controller
      */
     public function confirmDestroy(Todo $todo)
     {
+        $this->authorize('delete', $todo);
+
         return view('todos.confirm-destroy', ['todo' => $todo]);
     }
 
@@ -134,6 +136,8 @@ class TodoController extends Controller
      */
     public function destroy(Todo $todo)
     {
+        $this->authorize('delete', $todo);
+
         $todo->delete();
 
         return redirect()->route('todos.index')->with('status', 'TODOを削除しました。');
@@ -148,6 +152,8 @@ class TodoController extends Controller
      */
     public function show(Todo $todo)
     {
+        $this->authorize('view', $todo);
+
         return view('todos.show', ['todo' => $todo]);
     }
 }

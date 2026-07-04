@@ -11,17 +11,20 @@ class TodoShowTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected User $user;
+
     protected function setUp(): void
     {
         parent::setUp();
-        // スプリント7で認証必須にしたため、各テストの前にログイン状態を作る。
-        // このアプリでは誰がログインしていてもTODOは共通(所有権はスプリント8)
-        $this->actingAs(User::factory()->create());
+        // 各テストの前にユーザーを作ってログイン。以降のTODOはこの人の所有にする
+        // (スプリント8で認可を入れたため、他人のTODOは403になる)
+        $this->user = User::factory()->create();
+        $this->actingAs($this->user);
     }
 
     public function test_show_displays_todo_details(): void
     {
-        $todo = Todo::factory()->create([
+        $todo = Todo::factory()->for($this->user)->create([
             'title' => '歯医者を予約する',
             'description' => '午前中がよい',
         ]);

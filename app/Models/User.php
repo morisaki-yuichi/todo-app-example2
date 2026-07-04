@@ -29,4 +29,13 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    /**
+     * このユーザーが持つTODO(1対多)。
+     * $user->todos()->create([...]) で所有者つきのTODOを作れる。
+     */
+    public function todos(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Todo::class);
+    }
 }
