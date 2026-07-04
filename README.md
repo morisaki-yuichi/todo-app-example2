@@ -10,8 +10,8 @@ Laravel Sail 上で動く、CRUD機能を持つTODOアプリです。
 |---|---|
 | [開発トレースガイド](docs/00_project/dev-walkthrough.md) | コミット単位で開発を追体験するためのガイド(写経の本編) |
 | [概念解説集](docs/00_project/laravel-concepts.md) | 開発に登場した概念の「一言定義→なぜ必要か→実例」集 |
-| [PHP・Laravelクイックキャッチアップ](docs/00_project/php-for-polyglots.md) | Python/JavaScript経験者向け。コードを読むための構文の対応表 |
-| [演習編](docs/00_project/exercises.md) | 考えて書く→テスト等で答え合わせ→模範解答・解説でフィードバックを回す(サンプル版) |
+| [PHP・Laravelクイックキャッチアップ](docs/00_project/php-for-polyglots.md) | **写経を始める前に**。Python/JavaScript経験者がコードを読めるようになる構文の対応表(自己完結) |
+| [演習編](docs/00_project/exercises.md) | 考えて書く→模範解答・解説で答え合わせ。テーマA=写経前でも可、テーマB以降=写経後(サンプル版) |
 | [プロダクトロードマップ](docs/00_project/roadmap.md) | 全4スプリントの計画 |
 | [Q&A記録](docs/00_project/qa-log.md) | 仕様決定の経緯 |
 
