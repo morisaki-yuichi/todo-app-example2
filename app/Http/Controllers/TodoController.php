@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Todo;
+use Illuminate\Http\Request;
 
 class TodoController extends Controller
 {
@@ -16,6 +17,26 @@ class TodoController extends Controller
         $todos = Todo::orderByDesc('created_at')->orderByDesc('id')->get();
 
         return view('todos.index', ['todos' => $todos]);
+    }
+
+    /**
+     * TODOの新規作成フォームを表示する。
+     */
+    public function create()
+    {
+        return view('todos.create');
+    }
+
+    /**
+     * フォームから送られたTODOを保存する。
+     */
+    public function store(Request $request)
+    {
+        $todo = Todo::create($request->only(['title', 'description']));
+
+        // PRGパターン: POSTの結果は「リダイレクト」で返す。
+        // 直接HTMLを返すと、ブラウザのリロードでPOSTが再送されて二重登録される
+        return redirect()->route('todos.index');
     }
 
     /**
