@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreTodoRequest;
+use App\Http\Requests\UpdateTodoRequest;
 use App\Models\Todo;
 use Illuminate\Http\Request;
 
@@ -61,15 +63,11 @@ class TodoController extends Controller
     /**
      * フォームから送られたTODOを保存する。
      */
-    public function store(Request $request)
+    public function store(StoreTodoRequest $request)
     {
-        // 違反時はここで処理が止まり、エラーと入力値(old)を持って
-        // 自動でフォームへ302リダイレクトされる(自動差し戻し)
-        $validated = $request->validate([
-            'title' => ['required', 'string', 'max:100'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'due_date' => ['nullable', 'date'], // 任意・過去日も許可(qa-log参照)
-        ]);
+        // FormRequestが検証済み。違反時はコントローラに入る前に自動差し戻しされる。
+        // validated()で「ルールを通った値だけ」を取り出せる
+        $validated = $request->validated();
 
         // 作成者を所有者にする。リレーション経由で作るとuser_idが自動でセットされる
         $todo = $request->user()->todos()->create($validated);
@@ -94,18 +92,11 @@ class TodoController extends Controller
     /**
      * 編集フォームの内容でTODOを更新する。
      */
-    public function update(Request $request, Todo $todo)
+    public function update(UpdateTodoRequest $request, Todo $todo)
     {
         $this->authorize('update', $todo);
 
-        // ルールは作成時(store)と同一。挙動を揃えることが仕様(US-4)
-        $validated = $request->validate([
-            'title' => ['required', 'string', 'max:100'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'due_date' => ['nullable', 'date'],
-        ]);
-
-        $todo->update($validated);
+        $todo->update($request->validated());
 
         return redirect()->route('todos.show', $todo)->with('status', 'TODOを更新しました。');
     }
