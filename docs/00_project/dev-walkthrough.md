@@ -33,7 +33,8 @@
 | US-0 開発環境の再現 | 1-1([5621cfd](https://github.com/morisaki-yuichi/todo-app-example2/commit/5621cfd))、1-2([1c97590](https://github.com/morisaki-yuichi/todo-app-example2/commit/1c97590))、1-3([eb93e7c](https://github.com/morisaki-yuichi/todo-app-example2/commit/eb93e7c)) | [#1](https://github.com/morisaki-yuichi/todo-app-example2/pull/1)、[#2](https://github.com/morisaki-yuichi/todo-app-example2/pull/2) |
 | US-1 一覧を見る | 2-1([db050d7](https://github.com/morisaki-yuichi/todo-app-example2/commit/db050d7))、2-2([8e1b772](https://github.com/morisaki-yuichi/todo-app-example2/commit/8e1b772))、2-3([75ec45b](https://github.com/morisaki-yuichi/todo-app-example2/commit/75ec45b)) | [#3](https://github.com/morisaki-yuichi/todo-app-example2/pull/3) |
 | US-2 詳細を見る | 2-4([571473f](https://github.com/morisaki-yuichi/todo-app-example2/commit/571473f)) | [#3](https://github.com/morisaki-yuichi/todo-app-example2/pull/3) |
-| US-3〜US-6 | スプリント3以降 | - |
+| US-3 作成する | 3-1([751c7ce](https://github.com/morisaki-yuichi/todo-app-example2/commit/751c7ce))、3-2([493bbee](https://github.com/morisaki-yuichi/todo-app-example2/commit/493bbee))、3-3([c8e0e50](https://github.com/morisaki-yuichi/todo-app-example2/commit/c8e0e50))、3-4([e37c923](https://github.com/morisaki-yuichi/todo-app-example2/commit/e37c923)) | [#4](https://github.com/morisaki-yuichi/todo-app-example2/pull/4) |
+| US-4〜US-6 | スプリント4 | - |
 
 ## コミットに残っていない出来事
 
@@ -50,6 +51,9 @@
 | クローン再現テストで3306衝突 → FORWARD_DB_PORTを明示 | [スプリント1レビュー記録](../01_sprint1/sprint-review.md)、[PR #2](https://github.com/morisaki-yuichi/todo-app-example2/pull/2) |
 | わざと失敗実験: $fillableなしでMassAssignmentException | このガイドの [実験2-A](#実験2-a-わざと失敗fillableなしでcreateしてみる) |
 | シーダーの3件が同一秒作成でlatest()の並びが不安定 → id第2ソートで安定化 | [ステップ2-3](#ステップ2-3-todo一覧画面を作る)、[スプリント2レビュー記録](../02_sprint2/sprint-review.md) |
+| わざと失敗実験: ルート定義順序ミスで /todos/create が404 | このガイドの [実験3-A](#実験3-a-わざと失敗ルートの定義順序を間違えてみる) |
+| わざと失敗実験: バリデーションなしのPOSTで500(2パターン) | このガイドの [実験3-B](#実験3-b-わざと失敗バリデーションなしで不正なpostを送る) |
+| curlの `-X POST` + `-L` がリダイレクト先にもPOSTを強制し419になった | [ステップ3-3](#ステップ3-3-フラッシュメッセージを出す)、[スプリント3レビュー記録](../03_sprint3/sprint-review.md) |
 
 ---
 
@@ -662,3 +666,280 @@ git commit -m "feat: TODO詳細画面と一覧からのリンクを追加"
    どの順に通るか(ルート・コントローラ・モデル・ビューを使って)
 2. `$fillable` は何を防ぐ仕組みか。なければどんな攻撃が可能になるか
 3. 「画面を作る前にtinkerで検証する」ことの利点を、切り分けの観点で説明せよ
+
+---
+
+# スプリント3: Create(新規作成)
+
+**ゴール**: フォームからTODOを作成でき、不正な入力は入力値を保持して差し戻され、
+成功時はメッセージつきで一覧に戻る(リロードしても二重登録されない)
+(計画: [スプリント3バックログ](../03_sprint3/sprint-backlog.md) / PR: [#4](https://github.com/morisaki-yuichi/todo-app-example2/pull/4))
+
+**開始前の準備**: `git switch main && git pull` → `git switch -c feature/sprint3-create`
+
+このスプリントは概念が濃いスプリントです。
+【概念】[GETでデータを変えない原則](laravel-concepts.md#21-httpメソッドの使い分けとgetでデータを変えない原則) /
+[CSRF](laravel-concepts.md#22-csrfとcsrf) / [バリデーション](laravel-concepts.md#23-バリデーション自動差し戻しold値境界値) /
+[PRG](laravel-concepts.md#24-prgパターン) / [フラッシュデータ](laravel-concepts.md#25-フラッシュデータ)
+
+---
+
+## ステップ3-1: 作成フォームと保存処理を作る
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/751c7ce) / ローカル: `git show 751c7ce`
+
+### これから何を・なぜやるか
+
+「フォーム表示(GET)」と「保存(POST)」を**セットで**作ります。片方だけコミットすると
+「送信すると405になるフォーム」という壊れた状態が履歴に残るためです。
+データを変える操作をPOSTにするのは
+**[GETでデータを変えない原則](laravel-concepts.md#21-httpメソッドの使い分けとgetでデータを変えない原則)**のため。
+バリデーションはまだ入れません(「ない状態の危険」を実験3-Bで先に体験するため)。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `routes/web.php` | **手で編集**(create/storeルート追加。**順序に注意** — 実験3-A参照) |
+| `app/Http/Controllers/TodoController.php` | **手で編集**(create/storeメソッド追加。`use Illuminate\Http\Request;` を忘れずに) |
+| `resources/views/todos/create.blade.php` | **手で新規作成**(@csrf必須) |
+| `resources/views/todos/index.blade.php` | **手で編集**(「+ 新規作成」リンク追加) |
+
+### 実験3-A: わざと失敗(ルートの定義順序を間違えてみる)
+
+createルートを**わざと** `{todo}` ルートの後ろに書いてみます:
+
+```php
+Route::get('/todos/{todo}', [TodoController::class, 'show'])->name('todos.show');
+Route::get('/todos/create', [TodoController::class, 'create'])->name('todos.create'); // わざと後ろ
+```
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/todos/create   # => 404 !
+```
+
+- **なぜ404か**: ルートは**定義した順**に上からマッチします。`/todos/create` は先に
+  `/todos/{todo}` にマッチし、「create」という文字列がTODOのIDとして解釈され、
+  該当レコードがないので404になります
+- **罠**: `sail artisan route:list` は**URIのアルファベット順に表示する**ため、
+  一覧では正しい順に見えます。表示順≠マッチ順。定義ファイル(routes/web.php)が正
+- 確認できたら `create` を `{todo}` より**前**に移動 → 200
+
+### 編集の順序とその理由
+
+1. ルート(create→store→既存のshowの順に並べる。**具体的なURLはワイルドカードより先**)
+2. コントローラ(`create()` はビューを返すだけ。`store()` は保存して
+   `redirect()->route('todos.index')` — [PRG](laravel-concepts.md#24-prgパターン))
+3. フォームビュー(`@csrf` を最初に書く。忘れると419 — 下のcurl検証参照)
+4. 最後に一覧へ「+ 新規作成」リンク(行き先ができてから)
+
+### 動作確認(ブラウザ)
+
+- 一覧 → 「+ 新規作成」→ フォームに入力 → 「作成する」→ 一覧に戻り、先頭に新TODOが出る
+- **リロード(F5)しても二重登録されない**(PRGの効果。「フォーム再送信」の警告も出ない)
+
+### 動作確認(CLI): 新出ステータスコードを意図的に再現する
+
+「見たことがあるエラー」は怖くない。3つのコードをcurlで作り出します:
+
+```bash
+# 419: CSRFトークンなしのPOST(攻撃サイトからのPOSTはこうなって弾かれる)
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8080/todos -d "title=x"   # => 419
+
+# 405: ルートが存在しないHTTPメソッド(GET専用のURLにPOST)
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8080/todos/create        # => 405
+
+# 302: 正規のフロー。CSRFはトークン+Cookieの両方が必要なので、この2段階を踏む
+JAR=/tmp/cookies.txt
+TOKEN=$(curl -s -c "$JAR" http://localhost:8080/todos/create | grep -oP 'name="_token" value="\K[^"]+')
+curl -s -b "$JAR" -o /dev/null -w "%{http_code}\n" \
+     --data-urlencode "_token=$TOKEN" --data-urlencode "title=curlから作成" \
+     http://localhost:8080/todos                                                            # => 302
+```
+
+**なぜこの確認方法か**: ステータスコードだけ見れば「CSRF切れ(419)/URL・メソッド違い(405)
+/正常(302)」を機械的に区別できます。フォームのデバッグで「なんか動かない」と思ったら、
+まずこの3値のどれかを疑うと速い。
+
+> **写経時の差異**: `_token` の値はセッションごとに毎回変わります。上のように
+> 「取得してから使う」形にし、値を決め打ちでコピペしないこと。
+
+### ここでコミット
+
+```bash
+git add -A
+git commit -m "feat: TODO作成フォームと保存処理を追加"
+```
+
+- **粒度の理由**: フォーム(GET)と保存(POST)で「作成できる」という1つの意味。
+  リンク追加も含め、このコミット単体で機能が完結する
+- **メッセージの理由**: 本文にルート順序の理由と「バリデーションは意図的に未実装」を
+  明記(次のコミットへの伏線を履歴に残す)
+
+---
+
+## ステップ3-2: バリデーションを入れる
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/493bbee) / ローカル: `git show 493bbee`
+
+### 実験3-B: わざと失敗(バリデーションなしで不正なPOSTを送る)
+
+実装前に、**今の実装がどう壊れるか**を見ておきます(実験前後チェックを忘れずに)。
+
+```bash
+# (a) titleフィールド自体を送らない
+TOKEN=$(curl -s -c "$JAR" http://localhost:8080/todos/create | grep -oP 'name="_token" value="\K[^"]+')
+curl -s -b "$JAR" -o /dev/null -w "%{http_code}\n" \
+     --data-urlencode "_token=$TOKEN" --data-urlencode "description=titleなし" \
+     http://localhost:8080/todos    # => 500 !
+grep ERROR storage/logs/laravel.log | tail -1
+# => SQLSTATE[HY000]: General error: 1364 Field 'title' doesn't have a default value
+
+# (b) 空文字のtitleを送る
+# => これも500。ログには「Column 'title' cannot be null」
+```
+
+- (a) はDBの「titleに既定値がない」エラー。**DBが最後の砦**として機能した形
+- (b) は予想が外れた実録: 「空タイトルのゴミデータができる」と予想したが、
+  Laravelは標準ミドルウェア(ConvertEmptyStringsToNull)が**空文字をnullに変換**するため、
+  NOT NULL制約違反の500になった。**思い込みではなく実出力で検証**の実例
+- どちらにせよ利用者に500を見せるのは事故。**入口(バリデーション)で守る**必要がある
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `app/Http/Controllers/TodoController.php` | **手で編集**(store冒頭に `$request->validate([...])`) |
+| `resources/views/todos/create.blade.php` | **手で編集**(エラー表示 `$errors->all()` と `old()` の追加) |
+
+### 編集の順序とその理由
+
+1. コントローラに `validate()`(守りの本体が先)
+2. ビューにエラー表示と `old()`(守った結果を見せるのが後)
+
+`validate()` は違反時に**自動で**フォームへ302リダイレクトし、エラー内容と入力値を
+セッションに積んでくれます(自動差し戻し)。自分でif文を書く必要はありません。
+
+### 動作確認(ブラウザ)
+
+- 空のまま送信 → フォームに戻り「The title field is required.」が出る。
+  **descriptionに入れた文字は消えずに残っている**(old値)
+- **境界値**: タイトルに100文字ちょうど → 成功。101文字 → エラー。
+  (100文字の文字列作り: `python3 -c "print('あ'*100)"` をコピペ)
+- ※ エラーメッセージが英語なのはLaravel標準のまま使っているため。日本語化には
+  言語ファイルの整備が必要で、本教材ではスコープ外(概念解説集23で言及)
+
+### 動作確認(CLI)
+
+```bash
+# 空titleが「500」ではなく「302(差し戻し)」に変わったことを確認
+TOKEN=$(curl -s -c "$JAR" http://localhost:8080/todos/create | grep -oP 'name="_token" value="\K[^"]+')
+curl -s -b "$JAR" -o /dev/null -w "%{http_code}\n" \
+     --data-urlencode "_token=$TOKEN" --data-urlencode "title=" \
+     http://localhost:8080/todos    # => 302(実験3-Bでは500だった)
+```
+
+**なぜ302を確認するのか**: 成功も差し戻しも302です。「302だから成功」ではなく、
+**行き先**(Location: 一覧なら成功、フォームなら差し戻し)までがワンセット。
+
+### よくあるエラーと症状の対応表
+
+| 症状 | 原因 → 対処 |
+|---|---|
+| 送信すると419 | @csrfの書き忘れ / セッション切れ(フォームを開き直す) |
+| 送信すると405 | formのaction先ルートのメソッド不一致(POSTルートがあるか `route:list` で確認) |
+| /todos/create が404 | ルート定義順序({todo}が先に食べている)。実験3-A参照 |
+| エラーは出るが入力値が消える | ビューに `old('title')` を書いていない |
+| 100文字でもエラーになる | `max:100` は**文字数**(バイト数ではない)。全角で試したか、余計な空白が入っていないか |
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: TODO作成にバリデーションを追加(required/max:100/max:1000)"
+```
+
+- **粒度の理由**: 「入口の防御」というひとまとまり。フォーム本体(3-1)と分けたことで、
+  差分に「守りに必要な変更」だけが写る
+- **メッセージの理由**: 本文に実験3-Bの結果(なぜ必要だったか)と境界値の検証結果を記録
+
+---
+
+## ステップ3-3: フラッシュメッセージを出す
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/c8e0e50) / ローカル: `git show c8e0e50`
+
+### これから何を・なぜやるか
+
+作成成功後、一覧に「TODOを作成しました。」を**一度だけ**表示します。
+PRGでリダイレクトすると「成功した」という情報が次のページに渡らないので、
+**次の1リクエストだけ生きるセッション値**=フラッシュデータで渡します。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `app/Http/Controllers/TodoController.php` | **手で編集**(redirectに `->with('status', ...)`) |
+| `resources/views/layouts/app.blade.php` | **手で編集**(`session('status')` の表示。全画面で使うので**レイアウトに**置く) |
+
+### 動作確認(ブラウザ)
+
+- TODOを作成 → 一覧の先頭に「TODOを作成しました。」→ **F5でリロード → メッセージだけ消える**
+  (これがフラッシュの寿命。TODO自体は残る)
+
+### 動作確認(CLI)と実録トラブル
+
+```bash
+TOKEN=$(curl -s -c "$JAR" http://localhost:8080/todos/create | grep -oP 'name="_token" value="\K[^"]+')
+curl -s -b "$JAR" -c "$JAR" -L \
+     --data-urlencode "_token=$TOKEN" --data-urlencode "title=フラッシュ確認" \
+     http://localhost:8080/todos | grep 'TODOを作成しました。'
+```
+
+> **実録(curlの罠)**: 最初 `-X POST` を付けて `-L` と併用したところ、メッセージが
+> 出ませんでした。調査(`-v` でヘッダーを見る)の結果、**`-X POST` はリダイレクト先への
+> リクエストもPOSTに強制する**ことが判明(2回目のPOSTが419に)。ブラウザは302を受けると
+> **GETに切り替えて**リダイレクト先を開きます — PRGが二重登録を防げるのはこの挙動の
+> おかげです。curlでは `--data` を使えば自動でPOSTになるので `-X POST` は書かないこと。
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: TODO作成成功時のフラッシュメッセージを追加"
+```
+
+- **粒度の理由**: 「成功の可視化」という独立したUX改善。バリデーションとは目的が別
+- **メッセージの理由**: 本文にcurlの罠(-X POSTと-L)の実録を残した。
+  再び踏んだとき、`git log --grep="curl"` で見つけられる
+
+---
+
+## ステップ3-4: シーダーの時刻をずらす(前スプリントのTryの実行)
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/e37c923) / ローカル: `git show e37c923`
+
+スプリント2のレトロで出したTry(T-4)の実行です。シーダー3件が同一秒だと
+「新しい順」を目視検証できないため、`created_at` を2日前/1日前/今日に分散します。
+
+- `Todo::create()` は `created_at` を配列で渡しても**$fillableにないため無視**します。
+  `new Todo([...])` → `$todo->created_at = now()->subDays(2);` → `$todo->save()` の
+  形にするのがポイント(プロパティ直接代入は$fillableの制限を受けない)
+- 確認: `sail artisan db:seed` → 一覧の並びが「部屋の掃除(今日)→教材(昨日)→牛乳(一昨日)」
+
+```bash
+git add database/seeders/TodoSeeder.php && git commit -m "chore: シーダーのcreated_atを日単位でずらす"
+```
+
+- **粒度・種別の理由**: アプリの機能は変わらないので `feat` ではなく `chore`。
+  レトロのTryをコミットとして実行し、履歴に「振り返り→改善」の痕跡を残す
+
+---
+
+## スプリント3の振り返り課題(写経者向け)
+
+回答例は[スプリント3レトロスペクティブ](../03_sprint3/sprint-retrospective.md)にあります。
+
+1. CSRF攻撃はどんな手口か。@csrfトークンはなぜそれを防げるのか
+2. PRGパターンがないと何が起きるか。「302を受けたブラウザがGETで開き直す」ことと
+   合わせて説明せよ
+3. バリデーションとDBの制約(NOT NULL、varchar(100))は役割がどう違うか。
+   なぜ両方必要か
