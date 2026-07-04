@@ -7,7 +7,7 @@
 
     {{-- バリデーションで差し戻されたとき、エラー内容をまとめて表示する --}}
     @if ($errors->any())
-        <ul>
+        <ul class="errors">
             @foreach ($errors->all() as $error)
                 <li>{{ $error }}</li>
             @endforeach

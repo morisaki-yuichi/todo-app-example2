@@ -10,13 +10,19 @@
     @if ($todos->isEmpty())
         <p>TODOがありません。</p>
     @else
-        <ul>
+        <ul class="todo-list">
             @foreach ($todos as $todo)
-                <li>
+                <li class="{{ $todo->completed ? 'completed' : '' }}">
                     <a href="{{ route('todos.show', $todo) }}">{{ $todo->title }}</a>
                     @if ($todo->completed)
                         (完了)
                     @endif
+                    {{-- 状態変更はGETリンクではなくフォーム(PATCH)で行う --}}
+                    <form method="POST" action="{{ route('todos.toggle', $todo) }}" style="display: inline">
+                        @csrf
+                        @method('PATCH')
+                        <button type="submit">{{ $todo->completed ? '未完了に戻す' : '完了にする' }}</button>
+                    </form>
                 </li>
             @endforeach
         </ul>

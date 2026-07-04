@@ -1,0 +1,89 @@
+/* 全体: 読みやすさ優先の素朴なスタイル(CSSフレームワーク不使用) */
+body {
+    font-family: system-ui, sans-serif;
+    line-height: 1.7;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 16px 48px;
+    color: #222;
+}
+
+header {
+    border-bottom: 2px solid #2b6cb0;
+    margin-bottom: 24px;
+}
+
+header h1 {
+    font-size: 1.4rem;
+    color: #2b6cb0;
+}
+
+a {
+    color: #2b6cb0;
+}
+
+/* 一覧 */
+ul.todo-list {
+    list-style: none;
+    padding: 0;
+}
+
+ul.todo-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 4px;
+    border-bottom: 1px solid #ddd;
+}
+
+ul.todo-list li form {
+    margin-left: auto; /* ボタンを右端に寄せる */
+}
+
+/* 完了したTODOは打ち消し線+薄い色で区別する */
+li.completed a {
+    text-decoration: line-through;
+    color: #888;
+}
+
+/* フォーム */
+input[type="text"], textarea {
+    font: inherit;
+    padding: 6px 8px;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    width: 100%;
+    max-width: 480px;
+    box-sizing: border-box;
+}
+
+button {
+    font: inherit;
+    padding: 4px 14px;
+    border: 1px solid #2b6cb0;
+    border-radius: 4px;
+    background: #2b6cb0;
+    color: #fff;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #235a94;
+}
+
+/* フラッシュメッセージ(操作成功の通知) */
+p[role="status"] {
+    background: #e6f4ea;
+    border: 1px solid #34a853;
+    border-radius: 4px;
+    padding: 8px 12px;
+}
+
+/* バリデーションエラー */
+ul.errors {
+    background: #fdecea;
+    border: 1px solid #d93025;
+    border-radius: 4px;
+    padding: 8px 12px 8px 32px;
+    color: #d93025;
+}

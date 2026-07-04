@@ -48,6 +48,66 @@ class TodoController extends Controller
     }
 
     /**
+     * TODOの編集フォームを表示する。
+     */
+    public function edit(Todo $todo)
+    {
+        return view('todos.edit', ['todo' => $todo]);
+    }
+
+    /**
+     * 編集フォームの内容でTODOを更新する。
+     */
+    public function update(Request $request, Todo $todo)
+    {
+        // ルールは作成時(store)と同一。挙動を揃えることが仕様(US-4)
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:100'],
+            'description' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $todo->update($validated);
+
+        return redirect()->route('todos.show', $todo)->with('status', 'TODOを更新しました。');
+    }
+
+    /**
+     * TODOの完了/未完了を切り替える。
+     *
+     * PUTではなくPATCHなのは「リソースの一部だけを変更する」操作のため。
+     * 入力値は使わない(現在値の反転)のでバリデーションは不要。
+     */
+    public function toggle(Todo $todo)
+    {
+        $todo->update(['completed' => ! $todo->completed]);
+
+        $message = $todo->completed ? 'TODOを完了にしました。' : 'TODOを未完了に戻しました。';
+
+        return redirect()->route('todos.index')->with('status', $message);
+    }
+
+    /**
+     * 削除の確認ページを表示する(表示するだけ。まだ消さない)。
+     *
+     * JSのconfirm()を使わない本プロジェクトでは、誤操作防止の
+     * 確認ステップを「確認ページ」として実装する。
+     */
+    public function confirmDestroy(Todo $todo)
+    {
+        return view('todos.confirm-destroy', ['todo' => $todo]);
+    }
+
+    /**
+     * TODOを削除する(確認ページのフォームからのDELETEでのみ実行される)。
+     */
+    public function destroy(Todo $todo)
+    {
+        $todo->delete();
+
+        return redirect()->route('todos.index')->with('status', 'TODOを削除しました。');
+    }
+
+    /**
      * TODOの詳細を表示する。
      *
      * 引数の型をTodoにするとLaravelがURLの{todo}からレコードを

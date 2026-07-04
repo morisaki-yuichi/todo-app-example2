@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     {{-- 各ページのタイトルは @yield で差し込む。アプリ名は設定(config)から取る --}}
     <title>@yield('title') | {{ config('app.name') }}</title>
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
 </head>
 <body>
     <header>

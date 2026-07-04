@@ -34,7 +34,11 @@
 | US-1 一覧を見る | 2-1([db050d7](https://github.com/morisaki-yuichi/todo-app-example2/commit/db050d7))、2-2([8e1b772](https://github.com/morisaki-yuichi/todo-app-example2/commit/8e1b772))、2-3([75ec45b](https://github.com/morisaki-yuichi/todo-app-example2/commit/75ec45b)) | [#3](https://github.com/morisaki-yuichi/todo-app-example2/pull/3) |
 | US-2 詳細を見る | 2-4([571473f](https://github.com/morisaki-yuichi/todo-app-example2/commit/571473f)) | [#3](https://github.com/morisaki-yuichi/todo-app-example2/pull/3) |
 | US-3 作成する | 3-1([751c7ce](https://github.com/morisaki-yuichi/todo-app-example2/commit/751c7ce))、3-2([493bbee](https://github.com/morisaki-yuichi/todo-app-example2/commit/493bbee))、3-3([c8e0e50](https://github.com/morisaki-yuichi/todo-app-example2/commit/c8e0e50))、3-4([e37c923](https://github.com/morisaki-yuichi/todo-app-example2/commit/e37c923)) | [#4](https://github.com/morisaki-yuichi/todo-app-example2/pull/4) |
-| US-4〜US-6 | スプリント4 | - |
+| US-4 編集する | 4-1([b5af3c9](https://github.com/morisaki-yuichi/todo-app-example2/commit/b5af3c9)) | [#5](https://github.com/morisaki-yuichi/todo-app-example2/pull/5) |
+| US-5 完了/未完了にする | 4-2([55ebc8a](https://github.com/morisaki-yuichi/todo-app-example2/commit/55ebc8a))、4-4のCSS([fa08682](https://github.com/morisaki-yuichi/todo-app-example2/commit/fa08682)) | [#5](https://github.com/morisaki-yuichi/todo-app-example2/pull/5) |
+| US-6 削除する | 4-3([2296628](https://github.com/morisaki-yuichi/todo-app-example2/commit/2296628)) | [#5](https://github.com/morisaki-yuichi/todo-app-example2/pull/5) |
+| US-7 教材 | 各スプリントのdocsコミット全体(このガイド・概念解説集・スクラム記録) | #1〜#5 |
+| (仕上げ) | 4-4 CSS([fa08682](https://github.com/morisaki-yuichi/todo-app-example2/commit/fa08682))、4-5 トップ整理([28914b2](https://github.com/morisaki-yuichi/todo-app-example2/commit/28914b2)) | [#5](https://github.com/morisaki-yuichi/todo-app-example2/pull/5) |
 
 ## コミットに残っていない出来事
 
@@ -54,6 +58,8 @@
 | わざと失敗実験: ルート定義順序ミスで /todos/create が404 | このガイドの [実験3-A](#実験3-a-わざと失敗ルートの定義順序を間違えてみる) |
 | わざと失敗実験: バリデーションなしのPOSTで500(2パターン) | このガイドの [実験3-B](#実験3-b-わざと失敗バリデーションなしで不正なpostを送る) |
 | curlの `-X POST` + `-L` がリダイレクト先にもPOSTを強制し419になった | [ステップ3-3](#ステップ3-3-フラッシュメッセージを出す)、[スプリント3レビュー記録](../03_sprint3/sprint-review.md) |
+| わざと失敗実験: @method('PUT')を外すと405(予想的中) | このガイドの [実験4-A](#実験4-a-わざと失敗methodputを外してみる) |
+| わざと失敗実験: GETでは削除できないことの検証(3パターン) | このガイドの [実験4-B](#実験4-b-わざと失敗getリクエストで削除を試みる) |
 
 ---
 
@@ -943,3 +949,255 @@ git add database/seeders/TodoSeeder.php && git commit -m "chore: シーダーの
    合わせて説明せよ
 3. バリデーションとDBの制約(NOT NULL、varchar(100))は役割がどう違うか。
    なぜ両方必要か
+
+---
+
+# スプリント4: Update / Delete と仕上げ
+
+**ゴール**: 編集・完了切り替え・削除(確認ページ経由)ができ、アプリと教材が完成する
+(計画: [スプリント4バックログ](../04_sprint4/sprint-backlog.md) / PR: [#5](https://github.com/morisaki-yuichi/todo-app-example2/pull/5))
+
+**開始前の準備**: `git switch main && git pull` → `git switch -c feature/sprint4-update-delete`
+
+【概念】[メソッドスプーフィング](laravel-concepts.md#26-メソッドスプーフィングmethod) /
+[確認ページ方式](laravel-concepts.md#27-確認ページ方式) /
+[設定の2段構え](laravel-concepts.md#28-設定の2段構え環境変数configアプリ) / [DRY](laravel-concepts.md#29-dry)
+
+---
+
+## ステップ4-1: 編集機能を作る
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/b5af3c9) / ローカル: `git show b5af3c9`
+
+### これから何を・なぜやるか
+
+編集は **Read(既存値の表示)+ Create(フォーム送信)の合成技**です。新しい部品は
+2つだけ: HTMLフォームでPUTを表現する**メソッドスプーフィング**と、`old()` の第2引数です。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `routes/web.php` | **手で編集**(edit=GET、update=PUTの2ルート追加) |
+| `app/Http/Controllers/TodoController.php` | **手で編集**(edit/updateメソッド追加) |
+| `resources/views/todos/edit.blade.php` | **手で新規作成**(create.blade.phpを参考に) |
+| `resources/views/todos/show.blade.php` | **手で編集**(編集リンク追加) |
+
+### 編集の順序とその理由
+
+いつもどおり、ルート → コントローラ → ビュー → リンクの順。
+
+- `update()` のバリデーションルールは `store()` と**同一にコピー**します
+  (US-4の受け入れ条件が「作成時と同一に動作」のため。この重複はDRY違反では?という
+  論点は[概念解説集29](laravel-concepts.md#29-dry)で扱います)
+- ビューの入力値は `old('title', $todo->title)`:
+  **差し戻し時はold値、初回表示は現在のDB値**という二段構え
+
+### 実験4-A: わざと失敗(@method('PUT')を外してみる)
+
+**予想を先に書く**(スプリント3レトロのTry): @methodがないと素の
+`POST /todos/{id}` が送られる。このURL+POSTのルートは未定義なので**405になるはず**。
+
+```bash
+# フォームからトークンを取り、_method を付けずにPOST
+curl -s -b "$JAR" -o /dev/null -w "%{http_code}\n" \
+     --data-urlencode "_token=$TOKEN" --data-urlencode "title=x" \
+     http://localhost:8080/todos/<実ID>    # => 405(予想的中)
+```
+
+**結果**: 予想どおり405。`@method('PUT')` の実体は
+`<input type="hidden" name="_method" value="PUT">` という**ただの隠しフィールド**で、
+Laravelがこれを見てPUTルートへ振り分けています(ブラウザが送るのはあくまでPOST)。
+
+### 動作確認(ブラウザ)
+
+- 詳細 → 「このTODOを編集する」→ **現在の値が入った**フォーム
+- タイトルを変えて「更新する」→ 詳細に戻り「TODOを更新しました。」+新タイトル
+- **異常系**: タイトルを空にして送信 → エラー表示で差し戻し(作成時と同じ挙動)
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: TODO編集機能を追加(メソッドスプーフィング)"
+```
+
+- **粒度の理由**: edit+update+リンクで「編集できる」という1つの意味
+- **メッセージの理由**: 本文に実験4-Aの予想と結果を記録(予想を書く習慣を履歴にも残す)
+
+---
+
+## ステップ4-2: 完了/未完了トグルを作る
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/55ebc8a) / ローカル: `git show 55ebc8a`
+
+### これから何を・なぜやるか
+
+一覧から1クリックで完了⇔未完了を切り替えます。**状態が変わる操作なのでGETリンクは禁止**
+— 各行に小さなフォーム(PATCH)を置きます。PUTでなくPATCHなのは
+「リソースの一部だけの変更」だから(使い分けの慣習)。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `routes/web.php` | **手で編集**(PATCH toggleルート) |
+| `app/Http/Controllers/TodoController.php` | **手で編集**(toggleメソッド。`!$todo->completed` で反転) |
+| `resources/views/todos/index.blade.php` | **手で編集**(各行にフォームとボタン) |
+
+### 動作確認(ブラウザ+CLI)
+
+- 「完了にする」→ 一覧に戻り「TODOを完了にしました。」ボタンが「未完了に戻す」に変わる
+- もう一度押すと元に戻る(**双方向**を必ず確認。片方向しか試さないと反転バグを見逃す)
+- CLI: `tinker --execute="var_dump(App\Models\Todo::find(<実ID>)->completed);"`
+  で **bool(true)/bool(false)** を確認(画面は正しくてもDBが違う、を潰す)
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: 完了/未完了のトグルを追加(PATCH)"
+```
+
+- **粒度の理由**: US-5がまるごと1コミット。編集(US-4)とは別のストーリーなので分ける
+
+---
+
+## ステップ4-3: 削除を確認ページ方式で作る
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/2296628) / ローカル: `git show 2296628`
+
+### これから何を・なぜやるか
+
+削除には誤操作防止の確認ステップが必要ですが、本プロジェクトはJSを使わないので
+`confirm()` は使えません。そこで**確認ページ方式**:
+「GET(確認ページ=**表示するだけ**)」と「DELETE(実行)」の2段に分けます。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `routes/web.php` | **手で編集**(GET confirmDestroy + DELETE destroyの2ルート) |
+| `app/Http/Controllers/TodoController.php` | **手で編集**(confirmDestroy/destroyメソッド) |
+| `resources/views/todos/confirm-destroy.blade.php` | **手で新規作成**(対象タイトル表示+削除フォーム+キャンセルリンク) |
+| `resources/views/todos/show.blade.php` | **手で編集**(確認ページへのリンク) |
+
+### 編集の順序とその理由
+
+確認ページへの**リンクはGETでよい**(ページを表示するだけでデータを変えないから)。
+実行フォームは `@method('DELETE')`。「リンク=見るだけ」「フォーム=変える」という
+役割分担が崩れていないか、実装後に実験4-Bで検証します。
+
+### 実験4-B: わざと失敗(GETリクエストで削除を試みる)
+
+**予想を先に書く**: (a) 確認ページを何度GETしても消えない(表示のみ)。
+(b) GETに `?_method=DELETE` を付けても、スプーフィングは**POSTでしか効かない**ので消えない。
+(c) 正規のDELETEでは対象だけ消え、**他のデータは残る**。
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/todos/<実ID>/delete  # 2回実行
+curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:8080/todos/<実ID>?_method=DELETE"
+./vendor/bin/sail artisan tinker --execute="echo App\Models\Todo::count();"   # 減っていない!
+```
+
+**結果**: 3つとも予想どおり。正規の削除後は件数が1減り、**残り2件のタイトルも確認**
+(「対象が消えた」だけでなく「他が残っている」まで見るのが削除確認の作法 —
+全件deleteしてしまうバグはこの確認でしか捕まえられません)。削除済みIDの詳細は404。
+
+### 動作確認(ブラウザ)
+
+- 詳細 → 「このTODOを削除する…」→ 確認ページ(タイトルと警告)
+- 「キャンセル」→ 消えずに詳細へ戻る
+- もう一度確認ページ → 「削除する」→ 一覧に戻り「TODOを削除しました。」対象だけ消えている
+
+### よくあるエラーと症状の対応表
+
+| 症状 | 原因 → 対処 |
+|---|---|
+| 削除ボタンで419 | 確認ページのフォームに@csrf忘れ |
+| 削除ボタンで405 | @method('DELETE')忘れ(素のPOSTにはルートがない) |
+| 確認ページが404 | ルート順序({todo}が先に食べる)…ではない! `/todos/{todo}/delete` は2セグメントなので{todo}(1セグメント)とは衝突しない。単純なタイポやルート未定義を疑う |
+| 削除後の一覧で対象が残って見える | ブラウザキャッシュ。リロード。それでも残るならdestroyが呼ばれていない(route:listで確認) |
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: TODO削除を確認ページ方式で追加"
+```
+
+---
+
+## ステップ4-4: Plain CSSで見た目を整える
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/fa08682) / ローカル: `git show fa08682`
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `public/css/app.css` | **手で新規作成** |
+| `resources/views/layouts/app.blade.php` | **手で編集**(`<link rel="stylesheet" href="{{ asset('css/app.css') }}">`) |
+| `resources/views/todos/index.blade.php` | **手で編集**(`todo-list`クラスと完了時の`completed`クラス) |
+| `resources/views/todos/create.blade.php` / `edit.blade.php` | **手で編集**(エラーリストに`errors`クラス) |
+
+- `public/` 直下のファイルはそのままWebに公開されます。`asset()` はそこへのURLを作る
+  ヘルパ(将来ドメインやサブディレクトリが変わっても追従)
+- 完了の区別は**liのクラス+CSSの打ち消し線**で表現(見た目の関心はCSSに寄せる)
+- ビルド(Vite)は不要。素のCSSファイルを置くだけ
+
+### 動作確認(ブラウザ)
+
+全5画面(一覧・詳細・作成・編集・削除確認)を開き、崩れがないこと。
+完了TODOに打ち消し線が付くこと。**CSSが効かないときは** `curl -I
+http://localhost:8080/css/app.css` で200が返るか(パス間違いの切り分け)。
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "style: Plain CSSで一覧・フォーム・通知の見た目を整える"
+```
+
+- **種別の理由**: 挙動を変えない見た目の変更なので `style:`
+
+---
+
+## ステップ4-5: トップページを一覧へリダイレクト
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/28914b2) / ローカル: `git show 28914b2`
+
+`/` はもうWelcome画面である必要がないので、`Route::redirect('/', '/todos')` に変え、
+`welcome.blade.php` を削除します。**使わなくなったファイルはコミットで消す**
+(「いつか使うかも」で残すと、読者がどれが本物か分からなくなる。Gitに履歴があるので
+いつでも戻せます)。
+
+- 確認: `curl -s -o /dev/null -w "%{http_code} → %{redirect_url}\n" http://localhost:8080/`
+  → `302 → http://localhost:8080/todos`
+
+```bash
+git add -A && git commit -m "feat: トップページをTODO一覧へリダイレクト"
+```
+
+---
+
+## 仕上げ: PRマージと全機能の通し確認
+
+```bash
+git status    # 綺麗なことを確認
+git push -u origin feature/sprint4-update-delete
+gh pr create ... && gh pr merge ...
+git switch main && git pull
+```
+
+マージ後、**CRUD一周の通し確認**をブラウザで行います:
+作成 → 一覧で確認 → 詳細 → 編集 → 完了にする → 削除(確認ページ経由)→ 一覧が元どおり。
+これが全部通れば、プロダクトゴール達成です。
+
+---
+
+## スプリント4の振り返り課題(写経者向け)
+
+回答例は[スプリント4レトロスペクティブ](../04_sprint4/sprint-retrospective.md)にあります。
+
+1. メソッドスプーフィングとは何か。「ブラウザが実際に送っているもの」と
+   「Laravelが解釈するもの」を区別して説明せよ
+2. 削除を「確認ページ方式」にした理由を、技術制約と安全性の両面から説明せよ
+3. 4スプリントを通して、「動くことをどう確かめるか」について自分の習慣に
+   したいことを3つ挙げよ
