@@ -39,6 +39,10 @@
 | US-6 削除する | 4-3([2296628](https://github.com/morisaki-yuichi/todo-app-example2/commit/2296628)) | [#5](https://github.com/morisaki-yuichi/todo-app-example2/pull/5) |
 | US-7 教材 | 各スプリントのdocsコミット全体(このガイド・概念解説集・スクラム記録) | #1〜#5 |
 | (仕上げ) | 4-4 CSS([fa08682](https://github.com/morisaki-yuichi/todo-app-example2/commit/fa08682))、4-5 トップ整理([28914b2](https://github.com/morisaki-yuichi/todo-app-example2/commit/28914b2)) | [#5](https://github.com/morisaki-yuichi/todo-app-example2/pull/5) |
+| **第2部** | | |
+| US-8 期限日 | 5-1([a1f586d](https://github.com/morisaki-yuichi/todo-app-example2/commit/a1f586d))、5-2([6288c60](https://github.com/morisaki-yuichi/todo-app-example2/commit/6288c60)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
+| US-9 絞り込み | 5-3([3357f4a](https://github.com/morisaki-yuichi/todo-app-example2/commit/3357f4a)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
+| US-10 ページネーション | 5-4([8b3b26d](https://github.com/morisaki-yuichi/todo-app-example2/commit/8b3b26d)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
 
 ## コミットに残っていない出来事
 
@@ -60,6 +64,11 @@
 | curlの `-X POST` + `-L` がリダイレクト先にもPOSTを強制し419になった | [ステップ3-3](#ステップ3-3-フラッシュメッセージを出す)、[スプリント3レビュー記録](../03_sprint3/sprint-review.md) |
 | わざと失敗実験: @method('PUT')を外すと405(予想的中) | このガイドの [実験4-A](#実験4-a-わざと失敗methodputを外してみる) |
 | わざと失敗実験: GETでは削除できないことの検証(3パターン) | このガイドの [実験4-B](#実験4-b-わざと失敗getリクエストで削除を試みる) |
+| **第2部** | |
+| わざと失敗実験: SQLインジェクション(連結で全件漏れ・プレースホルダで安全) | このガイドの [実験5-A](#実験5-a-sqlインジェクションを安全に体験する) |
+| 標準ページネーションビューがCSSフレームワーク前提で500 → 自前ビュー作成 | [ステップ5-4](#ステップ5-4-ページネーション) |
+| curlはURL直書きの日本語をエンコードしない → `--get --data-urlencode` を使う | [ステップ5-3](#ステップ5-3-状態キーワードの絞り込み) |
+| page=abc はHTTP経由なら200(tinker直渡しはTypeError)= HTTP境界での防御 | [実験5-B](#実験5-b境界-不正な-page-値と-http境界のありがたみ) |
 
 ---
 
@@ -1371,3 +1380,155 @@ git add -A && git commit -m "feat: 期限日の入力・表示と期限切れの
 
 - **粒度の理由**: 「利用者から見て期限日機能が使える」単位。器(5-1)と分けたので、
   この差分には「見た目と入口」だけが写っている
+
+## ステップ5-3: 状態・キーワードの絞り込み
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/3357f4a) / ローカル: `git show 3357f4a`
+- 【概念】[クエリパラメータとGET絞り込み](laravel-concepts.md#31-クエリパラメータとget絞り込み) / [SQLインジェクション](laravel-concepts.md#32-sqlインジェクションとプレースホルダ)
+
+### これから何を・なぜやるか
+
+一覧に「状態(すべて/未完了/完了)」と「キーワード(タイトル・内容の部分一致)」の
+絞り込みを付けます。**ルートは増やしません** — 既存の `GET /todos` に
+クエリパラメータ(`?status=open&keyword=牛乳`)を足すだけ。絞り込みは
+「見るだけ」の操作なので[GETが正解](laravel-concepts.md#21-httpメソッドの使い分けとgetでデータを変えない原則)です
+(URLに条件が乗る=共有・ブックマークできる利点も付いてくる)。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `TodoController::index()` | **手で編集**(クエリ組み立て) |
+| `resources/views/todos/index.blade.php` | **手で編集**(GETフォーム+0件時の文言分岐) |
+| `public/css/app.css` | **手で編集**(.filter) |
+
+### 実装の要点
+
+- `index(Request $request)` に引数を追加し、`$request->query('status', 'all')` で受ける
+- **orWhereはクロージャで括る**:
+  ```php
+  $query->where('completed', false)   // 状態の条件
+        ->where(function ($q) use ($keyword) {   // ← これで括らないと…
+            $q->where('title', 'like', "%{$keyword}%")
+              ->orWhere('description', 'like', "%{$keyword}%");
+        });
+  ```
+  括らないと `完了=false AND title LIKE .. OR description LIKE ..` となり、
+  ORが状態条件を打ち消して**完了済みも表示されるバグ**になります(演算子の優先順位)
+- 想定外のstatus値(`?status=hack`)は「すべて」として扱う(不正な値で500にしない)
+
+### 実験5-A: SQLインジェクションを安全に体験する
+
+**予想を先に書く**(Try T-7): キーワードに `' OR '1'='1` を入れたとき、
+文字列連結でSQLを組むと**全件が漏れる**はず。プレースホルダなら「そういう名前の
+TODOを探す」だけで0件のはず。
+
+tinkerで**SELECTのみ**(データは変えない)で比較します:
+
+```php
+$kw = "' OR '1'='1";
+DB::select("select * from todos where title like '%{$kw}%'");   // (1) 危険: 連結
+DB::select("select * from todos where title like ?", ["%{$kw}%"]); // (2) 安全: プレースホルダ
+App\Models\Todo::where('title', 'like', "%{$kw}%")->count();      // (3) Eloquent
+```
+
+**結果**(実録): (1) は**全12件が漏れた**(`OR '1'='1'` が常に真になりWHEREが無効化)。
+(2) と (3) は**0件**(入力はただの文字列として扱われ、そんなタイトルは無い)。
+本アプリの絞り込みは(3)のEloquentを使っているので安全 — **なぜ安全かを実演で確認**しました。
+
+> この実験はコミットしません。tinkerでSELECTしただけなのでデータは無傷
+> (`git status` が綺麗なことを確認して次へ)。
+
+### 動作確認(CLI): curlの日本語エンコードの罠
+
+```bash
+# ✕ URLに日本語を直書きすると、curlはエンコードせず送るためヒットしない
+curl -s "http://localhost:8080/todos?keyword=牛乳"        # 0件になってしまう
+# ○ --get --data-urlencode で正しくエンコードする
+curl -s --get --data-urlencode "keyword=牛乳" http://localhost:8080/todos
+```
+
+- 状態: `?status=done` で完了のみ、`?status=open` で未完了のみ
+- 組み合わせ: `status=done&keyword=教材` で1件
+- **0件**: 存在しないキーワード → 「条件に一致するTODOがありません。」
+  (絞り込み時と全体0件で文言を出し分けている)
+- **異常系**: `?status=hack` → 200(「すべて」扱い)
+
+### リグレッション確認
+
+絞り込みなしの `/todos` が従来どおり全件出ること、既存CRUDが200であること。
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: 一覧に状態・キーワードの絞り込みを追加"
+```
+
+## ステップ5-4: ページネーション
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/8b3b26d) / ローカル: `git show 8b3b26d`
+- 【概念】[ページネーションとwithQueryString](laravel-concepts.md#33-ページネーションとwithquerystring)
+
+### これから何を・なぜやるか
+
+件数が増えても見通せるよう、一覧を5件/ページに分割します。`get()` を
+`paginate(5)` に変えるのが中心。**絞り込み条件をページ移動でも保つ**のが要点です。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `TodoController::index()` | **手で編集**(`get()` → `paginate(5)->withQueryString()`) |
+| `resources/views/todos/index.blade.php` | **手で編集**(`$todos->links(...)`) |
+| `resources/views/pagination/simple.blade.php` | **手で新規作成**(自前のページ送りビュー) |
+| `database/seeders/TodoSeeder.php` | **手で編集**(12件に増やす) |
+| `public/css/app.css` | **手で編集**(nav.pagination) |
+
+### 実録トラブル: 標準ページネーションビューが見つからない
+
+最初 `$todos->links('pagination::simple-default')` と書いたら
+**`View [simple-default] not found` で全ページ500**になりました。
+
+- **調査**: 500ページのエラー1行目 = ビューが見つからない。Laravelの標準
+  ページネーションビューは**Tailwind/Bootstrap前提**の名前しかない
+- **対処**: 本プロジェクトはCSSフレームワーク不使用なので、paginatorのメソッド
+  (`onFirstPage()` / `hasMorePages()` / `previousPageUrl()` / `nextPageUrl()` /
+  `currentPage()` / `lastPage()`)で**自前のビュー**を書き、`links('pagination.simple')`
+  で指定した
+
+### `withQueryString()` を忘れると
+
+ページ移動リンクに絞り込み条件(`status`/`keyword`)が乗らず、
+**2ページ目に行くと絞り込みが解除される**バグになります。`withQueryString()` を
+付けると現在のクエリパラメータをページリンクに引き継げます。
+
+### 動作確認(CLI)
+
+```bash
+for p in 1 2 3; do echo -n "page=$p: "; curl -s "http://localhost:8080/todos?page=$p" | grep -c '<li class'; done
+# => 5 / 5 / 2(合計12)
+curl -s --get --data-urlencode "status=open" http://localhost:8080/todos | grep -oE 'page=2[^"]*'
+# => ページリンクに status=open が乗っている
+```
+
+### 実験5-B(境界): 不正な page 値と、HTTP境界のありがたみ
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:8080/todos?page=abc"   # => 200
+curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:8080/todos?page=999"   # => 200
+```
+
+面白い実録: **tinkerで** `paginate(5, ['*'], 'page', 'abc')` と page に直接 'abc' を
+渡すと `TypeError: Unsupported operand types: string - int` で落ちます。
+しかし**HTTP経由**の `?page=abc` は200 — Laravelがリクエストのpage値を
+`resolveCurrentPage()` で検証し、不正なら1に丸めているからです。
+**「フレームワークが入口(HTTP境界)で守ってくれている」**ことの実演であり、
+逆に言えば「その守りを迂回すると同じ脆さが顔を出す」教訓でもあります。
+
+### リグレッション確認+ここでコミット
+
+既存CRUD一式が200のままであることを確認してから:
+
+```bash
+git add -A && git commit -m "feat: 一覧にページネーションを追加(5件/ページ)"
+```
