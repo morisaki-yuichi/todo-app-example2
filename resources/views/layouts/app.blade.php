@@ -10,6 +10,16 @@
 <body>
     <header>
         <h1>{{ config('app.name') }}</h1>
+        {{-- @auth: ログイン中だけ表示するBladeディレクティブ --}}
+        @auth
+            <p class="user-bar">
+                {{ auth()->user()->name }} さん
+                <form method="POST" action="{{ route('logout') }}" style="display: inline">
+                    @csrf
+                    <button type="submit">ログアウト</button>
+                </form>
+            </p>
+        @endauth
     </header>
     <main>
         {{-- 操作成功メッセージ(フラッシュデータ)。どの画面でも出せるよう共通レイアウトに置く --}}
