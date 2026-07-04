@@ -7,6 +7,13 @@
 
     <p>状態: {{ $todo->completed ? '完了' : '未完了' }}</p>
 
+    <p>
+        期限日: {{ $todo->due_date?->format('Y-m-d') ?? '(期限なし)' }}
+        @if ($todo->isOverdue())
+            <strong class="overdue-label">期限切れ</strong>
+        @endif
+    </p>
+
     {{-- 改行を保って表示する(white-space)。{{ }} で出すのでHTMLとしては解釈されない --}}
     <p style="white-space: pre-line">{{ $todo->description ?? '(内容はありません)' }}</p>
 

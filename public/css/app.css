@@ -46,6 +46,18 @@ li.completed a {
     color: #888;
 }
 
+/* 期限表示。期限切れ(未完了+過去日)は赤で強調 */
+.due {
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.due.overdue,
+.overdue-label {
+    color: #d93025;
+    font-weight: bold;
+}
+
 /* フォーム */
 input[type="text"], textarea {
     font: inherit;

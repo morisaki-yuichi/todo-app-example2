@@ -1201,3 +1201,117 @@ git switch main && git pull
 2. 削除を「確認ページ方式」にした理由を、技術制約と安全性の両面から説明せよ
 3. 4スプリントを通して、「動くことをどう確かめるか」について自分の習慣に
    したいことを3つ挙げよ
+
+---
+---
+
+# 第2部: 追加開発編
+
+第1部ではゼロからアプリを作りました。しかし実務のコードの大半は
+**「すでに動いているものへの追加・変更」**です。第2部では同じリポジトリに
+機能を足しながら、追加開発ならではの考え方を追体験します。
+
+## 追加開発の心得(第2部の各ステップに追加される3要素)
+
+| 要素 | 内容 | なぜ必要か |
+|---|---|---|
+| **影響調査** | 書く前に「どのファイルを読み・何に影響するか」を調べる | 新規開発は「白紙に書く」、追加開発は「他人(過去の自分)の絵に描き足す」。まず絵の全体を見ないと、思わぬ場所を塗りつぶす |
+| **既存データへの配慮** | テーブル変更は既存レコードが生き残る形で行う | 本番DBには利用者のデータが入っている。「作り直せばいい」は新規開発でしか通用しない |
+| **リグレッション確認** | 新機能の確認に加えて**既存機能が壊れていないこと**を確認する | 追加開発のバグの多くは「新機能が動かない」ではなく「元の機能が壊れた」として現れる |
+
+> 第1部を写経済みのリポジトリがあれば、そのまま続けられます。
+> mainが第1部完了時点(PR #5マージ地点)であることを `git log` で確認してください。
+
+---
+
+# スプリント5: Readの発展(期限日・絞り込み・ページネーション)
+
+**ゴール**: 稼働中のアプリに、既存データ・既存機能を壊さずに
+「期限日・絞り込み・ページネーション」を追加する
+(計画: [スプリント5バックログ](../05_sprint5/sprint-backlog.md) / 仕様: [qa-log.md](qa-log.md))
+
+**開始前の準備**: `git switch main && git pull` → `git switch -c feature/sprint5-due-date-filter`
+
+## ステップ5-0: 影響調査(コミットなし・でも最重要)
+
+期限日を追加すると何が変わるか、**コードを書く前に**調べます。
+
+```bash
+# 「Todo」に触れているファイルの一覧(=候補地図)
+grep -rl "Todo" app/ resources/views/ routes/ database/ --include="*.php"
+
+# 現在のテーブル構造(変更対象の現状)
+./vendor/bin/sail artisan db:table todos
+```
+
+この調査から導いた変更計画(実録):
+
+| ファイル | 変更内容 |
+|---|---|
+| 新規マイグレーション | due_dateカラム追加(**既存のcreate_todosは触らない** — 適用済みマイグレーションの書き換えは他環境と食い違う事故のもと) |
+| `app/Models/Todo.php` | $fillableとcastsにdue_date |
+| `TodoController` | store/updateのバリデーションにdue_date |
+| `create/edit/show/index` の4ビュー | 入力欄・表示の追加 |
+| `TodoSeeder` | 期限のバリエーション追加 |
+| `routes/web.php` | **変更不要**(絞り込みは既存ルート+クエリパラメータ) |
+| `public/css/app.css` | 期限切れ強調のスタイル |
+
+**なぜ調査を記録するのか**: レビューする人(未来の自分)が「変更漏れがないか」を
+この表と差分を突き合わせて確認できるからです。
+
+## ステップ5-1: due_dateカラムを追加する(追加マイグレーション)
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/a1f586d) / ローカル: `git show a1f586d`
+- 【概念】[追加マイグレーション](laravel-concepts.md#30-追加マイグレーション稼働中テーブルの変更)
+
+### これから何を・なぜやるか
+
+第1部との最大の違いはここ。テーブルに列を足すのに、既存のマイグレーションファイルを
+**書き換えるのではなく**、変更専用のマイグレーションを**新しく積みます**。
+マイグレーションは「DBの変更履歴」— 歴史は書き換えず、追記します。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `database/migrations/XXXX_add_due_date_to_todos_table.php` | **ジェネレータ**で生成後、**手で編集** |
+| `app/Models/Todo.php` | **手で編集**($fillable・castsにdue_date) |
+| `database/seeders/TodoSeeder.php` | **手で編集**(期限3パターン: 期限切れ/過去日だが完了/なし) |
+
+```bash
+./vendor/bin/sail artisan make:migration add_due_date_to_todos_table --table=todos
+```
+
+- `--table=todos`(既存テーブルの変更)であって `--create` ではない点に注意
+- **既存データへの配慮**: `->nullable()` が必須。NOT NULLで追加すると、
+  既存レコードが値を持てず**マイグレーション自体が失敗**します
+
+### 動作確認(CLI): 「データが生き残る」ことを見る
+
+```bash
+./vendor/bin/sail artisan tinker --execute="echo App\Models\Todo::count();"   # 適用前の件数を記録
+./vendor/bin/sail artisan migrate
+./vendor/bin/sail artisan tinker --execute="var_dump(App\Models\Todo::first()->due_date);"
+# => NULL(既存行は期限なしとして生き残っている)
+./vendor/bin/sail artisan migrate:rollback --step=1   # downも検証(データは残り、列だけ消える)
+./vendor/bin/sail artisan migrate
+./vendor/bin/sail artisan db:seed                     # 期限バリエーション入りで入れ直し
+```
+
+### リグレッション確認
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/todos          # => 200
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/todos/create   # => 200
+```
+
+列を足しただけなので画面は変わらないはず — 「変わらないことの確認」もリグレッション確認です。
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: todosにdue_date(期限日)カラムを追加"
+```
+
+- **粒度の理由**: 「データの器の変更」だけで1コミット。画面はまだ触らない。
+  こうすると万一問題が出たとき「器の問題か、画面の問題か」を履歴で切り分けられる

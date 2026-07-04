@@ -37,6 +37,7 @@ class TodoController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:1000'],
+            'due_date' => ['nullable', 'date'], // 任意・過去日も許可(qa-log参照)
         ]);
 
         $todo = Todo::create($validated);
@@ -64,6 +65,7 @@ class TodoController extends Controller
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:1000'],
+            'due_date' => ['nullable', 'date'],
         ]);
 
         $todo->update($validated);

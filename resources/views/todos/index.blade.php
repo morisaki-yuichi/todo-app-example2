@@ -17,6 +17,11 @@
                     @if ($todo->completed)
                         (完了)
                     @endif
+                    @if ($todo->due_date)
+                        <span class="due {{ $todo->isOverdue() ? 'overdue' : '' }}">
+                            期限: {{ $todo->due_date->format('m/d') }}@if ($todo->isOverdue())(期限切れ)@endif
+                        </span>
+                    @endif
                     {{-- 状態変更はGETリンクではなくフォーム(PATCH)で行う --}}
                     <form method="POST" action="{{ route('todos.toggle', $todo) }}" style="display: inline">
                         @csrf

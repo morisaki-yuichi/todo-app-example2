@@ -28,4 +28,17 @@ class Todo extends Model
             'due_date' => 'date', // DBのdate文字列をCarbon(日付オブジェクト)として扱う
         ];
     }
+
+    /**
+     * 期限切れか?(期限があり・未完了で・期限日が昨日以前)
+     *
+     * 判定ルールをモデルに置くことで、複数のビューから同じ基準で使える。
+     * 「今日が期限」はまだ間に合うので期限切れに含めない(lt = より前)。
+     */
+    public function isOverdue(): bool
+    {
+        return $this->due_date !== null
+            && ! $this->completed
+            && $this->due_date->lt(today());
+    }
 }
