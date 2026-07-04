@@ -15,11 +15,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        // 認証機能は本プロジェクトのスコープ外のため、Userのダミーは作らない
+        $this->call([
+            TodoSeeder::class,
         ]);
     }
 }
