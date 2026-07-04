@@ -8,15 +8,41 @@ use Illuminate\Http\Request;
 class TodoController extends Controller
 {
     /**
-     * TODO一覧を表示する。
+     * TODO一覧を表示する(状態・キーワードの絞り込みつき)。
+     *
+     * 絞り込みは「見るだけ」の操作なのでGET+クエリパラメータで受ける。
+     * URLに条件が現れるため、結果を共有・ブックマークできる。
      */
-    public function index()
+    public function index(Request $request)
     {
-        // 新しい順。シーダーのように同一秒で複数作られると
-        // created_atだけでは並びが不安定なため、idを第2ソートキーにする
-        $todos = Todo::orderByDesc('created_at')->orderByDesc('id')->get();
+        $status = $request->query('status', 'all');   // all / open / done
+        $keyword = $request->query('keyword', '');
 
-        return view('todos.index', ['todos' => $todos]);
+        $query = Todo::query();
+
+        if ($status === 'open') {
+            $query->where('completed', false);
+        } elseif ($status === 'done') {
+            $query->where('completed', true);
+        } // 想定外の値は「すべて」として扱う(不正な値で500にしない)
+
+        if ($keyword !== '') {
+            // orWhereはクロージャで括って (title LIKE .. OR description LIKE ..) に
+            // まとめる。括らないと status の条件がORで無効化されるバグになる
+            $query->where(function ($q) use ($keyword) {
+                $q->where('title', 'like', "%{$keyword}%")
+                    ->orWhere('description', 'like', "%{$keyword}%");
+            });
+        }
+
+        // 新しい順。同一秒作成に備えてidを第2ソートキーにする(スプリント2の実録)
+        $todos = $query->orderByDesc('created_at')->orderByDesc('id')->get();
+
+        return view('todos.index', [
+            'todos' => $todos,
+            'status' => $status,
+            'keyword' => $keyword,
+        ]);
     }
 
     /**

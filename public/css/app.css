@@ -83,6 +83,21 @@ button:hover {
     background: #235a94;
 }
 
+/* 絞り込みフォーム */
+form.filter {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+form.filter select, form.filter input[type="text"] {
+    font: inherit;
+    padding: 4px 8px;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+}
+
 /* フラッシュメッセージ(操作成功の通知) */
 p[role="status"] {
     background: #e6f4ea;

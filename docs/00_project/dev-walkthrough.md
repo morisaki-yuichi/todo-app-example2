@@ -1315,3 +1315,59 @@ git add -A && git commit -m "feat: todosにdue_date(期限日)カラムを追加
 
 - **粒度の理由**: 「データの器の変更」だけで1コミット。画面はまだ触らない。
   こうすると万一問題が出たとき「器の問題か、画面の問題か」を履歴で切り分けられる
+
+## ステップ5-2: 期限日の入力・表示と期限切れ強調
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/6288c60) / ローカル: `git show 6288c60`
+
+### これから何を・なぜやるか
+
+器(カラム)ができたので、入力(フォーム)と出力(一覧・詳細)を繋ぎます。
+「期限切れかどうか」の判定は**モデルのメソッド `isOverdue()`** に置きます —
+一覧と詳細の2箇所で使う判定ルールをビューにベタ書きすると、
+基準がズレる事故(DRY違反)になるからです。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `app/Models/Todo.php` | **手で編集**(isOverdue()メソッド追加) |
+| `app/Http/Controllers/TodoController.php` | **手で編集**(store/updateの検証に `'due_date' => ['nullable', 'date']`) |
+| `create/edit/show/index` の4ビュー | **手で編集**(入力欄・表示。影響調査の表どおり) |
+| `public/css/app.css` | **手で編集**(.due / .overdue) |
+
+### 編集の順序とその理由
+
+1. **モデル**の `isOverdue()`(判定ルールが先。「今日が期限」は期限切れに含めない=
+   `lt(today())` という境界の決定もここで言語化する)
+2. **コントローラ**のバリデーション(入口の防御)
+3. **フォーム2枚**(`<input type="date">`。editは `old('due_date', $todo->due_date?->format('Y-m-d'))` —
+   input[type=date]の値は `Y-m-d` 文字列なのでCarbonから形式を合わせる)
+4. **表示2枚+CSS**(一覧は期限切れだけ赤強調。**完了済みの過去日は強調しない**のが仕様)
+
+### 動作確認(ブラウザ)
+
+シーダーの3件がそのまま試験データです:
+- 「牛乳を買う」(未完了・昨日期限)→ 一覧と詳細に**赤い「期限切れ」**
+- 「Laravel教材…」(完了・昨日期限)→ 期限は出るが**強調されない**
+- 「部屋の掃除」(期限なし)→ 期限表示自体が出ない
+- 新規作成で期限 `2026-07-10` を入れる → 詳細・一覧に反映
+- **異常系**: due_dateに手打ちで不正な値(ブラウザのdate入力を避けてcurlで
+  `due_date=あした` 等)→ `The due date field must be a valid date.`
+
+### リグレッション確認
+
+```bash
+for u in /todos /todos/create /todos/<実ID> /todos/<実ID>/edit /todos/<実ID>/delete; do
+  curl -s -o /dev/null -w "$u => %{http_code}\n" "http://localhost:8080$u"
+done   # すべて200のまま
+```
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: 期限日の入力・表示と期限切れの強調表示を追加"
+```
+
+- **粒度の理由**: 「利用者から見て期限日機能が使える」単位。器(5-1)と分けたので、
+  この差分には「見た目と入口」だけが写っている
