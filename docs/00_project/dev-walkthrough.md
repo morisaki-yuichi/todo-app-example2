@@ -43,6 +43,7 @@
 | US-8 期限日 | 5-1([a1f586d](https://github.com/morisaki-yuichi/todo-app-example2/commit/a1f586d))、5-2([6288c60](https://github.com/morisaki-yuichi/todo-app-example2/commit/6288c60)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
 | US-9 絞り込み | 5-3([3357f4a](https://github.com/morisaki-yuichi/todo-app-example2/commit/3357f4a)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
 | US-10 ページネーション | 5-4([8b3b26d](https://github.com/morisaki-yuichi/todo-app-example2/commit/8b3b26d)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
+| US-7 教材(テスト/CI) | 6-1([54b4a9c](https://github.com/morisaki-yuichi/todo-app-example2/commit/54b4a9c))、6-2([e597aff](https://github.com/morisaki-yuichi/todo-app-example2/commit/e597aff))、6-3([67c863d](https://github.com/morisaki-yuichi/todo-app-example2/commit/67c863d)・[4bd7d65](https://github.com/morisaki-yuichi/todo-app-example2/commit/4bd7d65)) | [#7](https://github.com/morisaki-yuichi/todo-app-example2/pull/7) |
 
 ## コミットに残っていない出来事
 
@@ -69,6 +70,9 @@
 | 標準ページネーションビューがCSSフレームワーク前提で500 → 自前ビュー作成 | [ステップ5-4](#ステップ5-4-ページネーション) |
 | curlはURL直書きの日本語をエンコードしない → `--get --data-urlencode` を使う | [ステップ5-3](#ステップ5-3-状態キーワードの絞り込み) |
 | page=abc はHTTP経由なら200(tinker直渡しはTypeError)= HTTP境界での防御 | [実験5-B](#実験5-b境界-不正な-page-値と-http境界のありがたみ) |
+| わざと失敗実験: red→green(assertTrueで赤→assertFalseで緑) | このガイドの [実験6-A](#実験6-a-赤を見てから緑にするtry-t-12) |
+| assertDontSeeが部分文字列(未完了⊃完了)で誤反応 | [ステップ6-2](#ステップ6-2-crud絞り込みのfeatureテスト手作業の写経) |
+| わざと失敗実験: CIが赤(空のtests/Unitはgit非追跡)→ Unitテスト追加で緑 | このガイドの [実験6-B](#実験6-b-ciが赤くなるのを見るそして直す) |
 
 ---
 
@@ -1532,3 +1536,175 @@ curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:8080/todos?page=999" 
 ```bash
 git add -A && git commit -m "feat: 一覧にページネーションを追加(5件/ページ)"
 ```
+
+---
+
+# スプリント6: 自動テストとCI
+
+**ゴール**: CRUD・絞り込みの主要な振る舞いをFeatureテストで自動検証でき、
+PRを出すとGitHub Actionsがそのテストを自動実行する
+(計画: [スプリント6バックログ](../06_sprint6/sprint-backlog.md) / PR: [#7](https://github.com/morisaki-yuichi/todo-app-example2/pull/7))
+
+**なぜ今テストか**: スプリント5で「既存CRUD 5画面が200か」を毎コミット手作業で
+確認しました。この繰り返しこそ自動化すべきもの。そして次の認証(スプリント7)は
+全ページに影響する大改修 — その前に**テストの傘**を張り、「壊したら赤くなる」
+安全網の中で改修できるようにします。
+
+【概念】[自動テストとRefreshDatabase](laravel-concepts.md#34-自動テストとrefreshdatabase) /
+[ファクトリ](laravel-concepts.md#35-ファクトリテストデータの工場) / [CI](laravel-concepts.md#36-cigithub-actions)
+
+## ステップ6-0: テスト環境の影響調査
+
+テストは**開発DBとは別のDB**で動かします。書く前に前提を確認します(Try T-11)。
+
+```bash
+grep -A2 'DB_' phpunit.xml    # => DB_DATABASE=testing(接続はmysqlのまま)
+```
+
+- phpunit.xmlが `DB_DATABASE=testing` を指定 → テストは `todo_app` ではなく
+  `testing` データベースを使う(**開発データを壊さない**)
+- `testing` DBはSailのMySQLコンテナが起動時に自動作成している
+  (`compose.yaml` の `create-testing-database.sh`)。
+  確認: `sail root-shell -c "mysql -uroot -ppassword -e 'SHOW DATABASES;'"`
+
+## ステップ6-1: ファクトリとred→green(実験6-A)
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/54b4a9c) / ローカル: `git show 54b4a9c`
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `database/factories/TodoFactory.php` | **ジェネレータ**(`make:factory`)後、**手で編集** |
+| `app/Models/Todo.php` | **手で編集**(`use HasFactory`) |
+
+### 実験6-A: 赤を見てから緑にする(Try T-12)
+
+TDDのリズムを体験します。**わざと間違ったアサーション**を書いて赤を確認 →
+直して緑。「テストが本当に検証している」ことは、一度赤にして初めて分かります。
+
+```php
+// わざと: 既定は未完了(false)なのに true を期待する
+$this->assertTrue($todo->completed);
+```
+
+```bash
+./vendor/bin/sail test --filter=TodoFactorySmokeTest
+# => Failed asserting that false is true.(赤)
+```
+
+`assertFalse` に直すと緑。**赤を経ずに書いたテストは、実は何も検証していない
+(常に緑)かもしれない** — だから一度落とすのが大事です。
+このスモークテストは役目を終えたので、本命のテストを書いたら削除します。
+
+### 【概念】RefreshDatabase
+
+テストクラスに `use RefreshDatabase;` を付けると、**各テストの前にtesting DBを
+作り直します**。テスト同士がデータを共有して「他のテストのせいで落ちる/通る」
+不安定さ(テスト汚染)を防ぐためです。詳しくは
+[概念34](laravel-concepts.md#34-自動テストとrefreshdatabase)。
+
+## ステップ6-2: CRUD・絞り込みのFeatureテスト(手作業の写経)
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/e597aff) / ローカル: `git show e597aff`
+
+### これから何を・なぜやるか
+
+スプリント5まで**手作業で確認していたこと**(既存CRUDが動く・バリデーション・
+PRG・404・絞り込み・不正page値・期限切れ表示)を、そのままテストコードに
+翻訳します(Try T-10)。Featureテストは「HTTPリクエストを送って応答を検証する」
+= まさに手作業のcurl確認をコードにしたものです。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `tests/Feature/Todo{Index,Show,Create,Update,Delete,Filter}Test.php` | **ジェネレータ**後、**手で編集** |
+| `tests/Feature/ExampleTest.php` / `tests/Unit/ExampleTest.php` | **削除**(下記) |
+
+### 手作業とテストの対応(写経の地図)
+
+| スプリント5までの手作業 | テストでの書き方 |
+|---|---|
+| `curl -w "%{http_code}" /todos` → 200 | `$this->get('/todos')->assertOk()` |
+| 一覧にタイトルが出るか目視 | `->assertSee('牛乳を買う')` |
+| `/todos/99999` → 404 | `->assertNotFound()` |
+| 空title送信 → 差し戻し | `->assertSessionHasErrors('title')` |
+| 作成後 一覧へリダイレクト | `->assertRedirect('/todos')` |
+| DBに入ったか | `$this->assertDatabaseHas('todos', [...])` |
+| 削除で対象だけ消えたか(T-9) | `assertDatabaseMissing` + `assertDatabaseHas` |
+
+### 実録トラブル: 部分文字列でassertDontSeeが誤反応
+
+絞り込みテストで「未完了タスク」(open)と「完了タスク」(done)を使ったら、
+`assertDontSee('完了タスク')` が**誤って失敗**しました。
+**「未完了タスク」は「完了タスク」を部分文字列として含む**からです。
+`assertSee`/`assertDontSee` は部分一致なので、テストデータの語は
+**部分文字列で重ならないもの**(「牛乳を買う」「部屋の掃除」)を選びます。
+
+### 既定ExampleTestの削除
+
+`tests/Feature/ExampleTest.php` は `/` に200を期待しますが、スプリント4で
+`/` を `/todos` へ**302リダイレクト**にしたため失敗します。この「意味を失った
+自動生成テスト」は消し、`/` の振る舞いは `TodoIndexTest::test_root_redirects_to_todos`
+(302を検証)で置き換えます。
+
+```bash
+rm tests/Feature/ExampleTest.php tests/Unit/ExampleTest.php
+./vendor/bin/sail test    # 全緑を確認
+```
+
+## ステップ6-3: GitHub Actionsで自動化+CI赤→緑(実験6-B)
+
+- 差分: [CI追加 67c863d](https://github.com/morisaki-yuichi/todo-app-example2/commit/67c863d) /
+  [CI赤の修正 4bd7d65](https://github.com/morisaki-yuichi/todo-app-example2/commit/4bd7d65)
+
+### これから何を・なぜやるか
+
+PRを出すたびに人間がテストを流すのは忘れがち。**GitHub Actions**にやらせます。
+ローカルのSail(Docker)と同じことを、GitHubが用意するUbuntu上で再現します。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `.github/workflows/ci.yml` | **手で新規作成** |
+
+要点(`ci.yml`):
+- `on: pull_request` と `push: [main]` で起動
+- `services.mysql` で**テスト用MySQLをサービスコンテナ**として起動
+  (ローカルでmysqlコンテナを立てるのと同じ)。`health-cmd` でDB準備完了を待つ
+- `composer install` → `key:generate` → `php artisan test` の順
+
+### 実験6-B: CIが赤くなるのを見る(そして直す)
+
+**実録**: 最初のCIは**赤**でした。ローカルは緑なのに、です。調査の型どおり
+ログのエラーを読むと:
+
+```
+Test directory ".../tests/Unit" not found
+```
+
+- **原因**: ステップ6-2で `tests/Unit/ExampleTest.php` を消したとき、
+  Unitディレクトリが空になった。**gitは空ディレクトリを追跡しない**ため、
+  CIのチェックアウトには `tests/Unit` が存在せず、phpunit.xmlのUnitスイートが失敗
+- **なぜローカルでは緑だったか**: 手元にはディレクトリが物理的に残っていたから。
+  「自分の環境だけ通る」の典型 — **CIはまっさらな環境で再現するので、
+  こういう暗黙の依存を暴いてくれる**(これがCIの価値そのもの)
+- **解決**: モデルの `isOverdue()` のUnitテストを追加してディレクトリを実体化
+  (`.gitkeep` でも直るが、意味のあるテストで埋める方がよい)。
+  dateキャストがアプリ起動を要するため、Unitテストも `Tests\TestCase` を継承する
+
+修正をpushすると、CIが**緑**に変わります。PR画面の「Checks」で緑のチェックを確認。
+
+### CIログの読み方
+
+`gh run view <RID> --log-failed` で失敗ステップのログだけ抽出できます。
+ここでも**エラーの1行目から読む**は同じ。CIのログは長いので、
+`grep -iE 'error|fail|not found'` で当たりを付けるのが速いです。
+
+### ここでコミット(このスプリントのコミット群)
+
+テストとCIは「1つの意味」ごとに分けました: ①ファクトリ+疎通、②Featureテスト群、
+③CI追加、④CI赤の修正(Unitテスト)。②と④を分けたことで、
+「なぜUnitテストを足したのか(CIを緑にするため)」が履歴で追えます。
