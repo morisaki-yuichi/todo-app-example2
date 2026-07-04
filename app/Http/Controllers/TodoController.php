@@ -17,4 +17,16 @@ class TodoController extends Controller
 
         return view('todos.index', ['todos' => $todos]);
     }
+
+    /**
+     * TODOの詳細を表示する。
+     *
+     * 引数の型をTodoにするとLaravelがURLの{todo}からレコードを
+     * 自動で取得してくれる(ルートモデルバインディング)。
+     * 存在しないIDなら自動で404になる。
+     */
+    public function show(Todo $todo)
+    {
+        return view('todos.show', ['todo' => $todo]);
+    }
 }

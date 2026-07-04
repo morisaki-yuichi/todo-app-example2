@@ -11,7 +11,7 @@
         <ul>
             @foreach ($todos as $todo)
                 <li>
-                    {{ $todo->title }}
+                    <a href="{{ route('todos.show', $todo) }}">{{ $todo->title }}</a>
                     @if ($todo->completed)
                         (完了)
                     @endif
