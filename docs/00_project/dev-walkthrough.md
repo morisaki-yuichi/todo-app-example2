@@ -44,6 +44,7 @@
 | US-9 絞り込み | 5-3([3357f4a](https://github.com/morisaki-yuichi/todo-app-example2/commit/3357f4a)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
 | US-10 ページネーション | 5-4([8b3b26d](https://github.com/morisaki-yuichi/todo-app-example2/commit/8b3b26d)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
 | US-7 教材(テスト/CI) | 6-1([54b4a9c](https://github.com/morisaki-yuichi/todo-app-example2/commit/54b4a9c))、6-2([e597aff](https://github.com/morisaki-yuichi/todo-app-example2/commit/e597aff))、6-3([67c863d](https://github.com/morisaki-yuichi/todo-app-example2/commit/67c863d)・[4bd7d65](https://github.com/morisaki-yuichi/todo-app-example2/commit/4bd7d65)) | [#7](https://github.com/morisaki-yuichi/todo-app-example2/pull/7) |
+| US-11 登録/ログイン、US-12 未ログイン誘導 | 7-1([67e1f8d](https://github.com/morisaki-yuichi/todo-app-example2/commit/67e1f8d)) | [#8](https://github.com/morisaki-yuichi/todo-app-example2/pull/8) |
 
 ## コミットに残っていない出来事
 
@@ -73,6 +74,8 @@
 | わざと失敗実験: red→green(assertTrueで赤→assertFalseで緑) | このガイドの [実験6-A](#実験6-a-赤を見てから緑にするtry-t-12) |
 | assertDontSeeが部分文字列(未完了⊃完了)で誤反応 | [ステップ6-2](#ステップ6-2-crud絞り込みのfeatureテスト手作業の写経) |
 | わざと失敗実験: CIが赤(空のtests/Unitはgit非追跡)→ Unitテスト追加で緑 | このガイドの [実験6-B](#実験6-b-ciが赤くなるのを見るそして直す) |
+| わざと失敗実験: パスワードの平文===比較は必ず外れる(ハッシュ保存) | このガイドの [実験7-A](#実験7-a-パスワードはハッシュで保存されるわざと平文比較して失敗を見る) |
+| 認証必須化で既存Featureテスト19本が赤(予想T-13が的中)→ actingAsで更新 | [ステップ7-2](#ステップ7-2-既存テストを認証前提に更新する予想の答え合わせ) |
 
 ---
 
@@ -1708,3 +1711,135 @@ Test directory ".../tests/Unit" not found
 テストとCIは「1つの意味」ごとに分けました: ①ファクトリ+疎通、②Featureテスト群、
 ③CI追加、④CI赤の修正(Unitテスト)。②と④を分けたことで、
 「なぜUnitテストを足したのか(CIを緑にするため)」が履歴で追えます。
+
+---
+
+# スプリント7: 認証(手作り)
+
+**ゴール**: 登録・ログイン・ログアウトができ、未ログインではTODO機能に
+アクセスできない(ログイン画面へ誘導される)
+(計画: [スプリント7バックログ](../07_sprint7/sprint-backlog.md) / PR: [#8](https://github.com/morisaki-yuichi/todo-app-example2/pull/8))
+
+**このスプリントの分割方針**: 「認証(誰であるか)」に集中し、「認可(誰のTODOか)」は
+スプリント8に分ける。**S7完了時点ではログイン必須だが全ユーザーがTODOを共有**という
+中間状態。認証と認可は別概念なので、混ぜずに順に学ぶ。
+
+【概念】[認証とセッション](laravel-concepts.md#37-認証とセッション) /
+[パスワードハッシュ](laravel-concepts.md#38-パスワードハッシュ) /
+[ミドルウェアとauth-guest](laravel-concepts.md#39-ミドルウェアとauthguest)
+
+**なぜBreezeを使わないか**: Laravel BreezeはTailwind/Alpine.jsに依存し、本プロジェクトの
+「Plain HTML/CSS・JSフレームワーク不使用」制約に反する。手作りにすることで
+セッション・ハッシュ・ミドルウェアの仕組みを露出させ、教材価値を高める。
+
+## ステップ7-0: 影響調査と「赤くなるテスト」の予想(Try T-13)
+
+認証は全ページに影響する大改修。着手前に調べ、**予想を先に書きます**。
+
+```bash
+./vendor/bin/sail artisan db:table users   # usersテーブルは標準migrationで既にある
+```
+
+- **既にあるもの**: `users` テーブル(name/email/password…)、`User` モデル
+  (`password` は `hashed` キャスト=平文代入で自動ハッシュ化)、`config/auth.php`
+- **赤くなるテストの予想**: TODOルートをauth保護すると、ログインせず `/todos` を叩く
+  既存Featureテスト(20本)は**期待レスポンスの代わりに /login への302**が返り失敗するはず。
+  HTTP を経ないUnitテスト(isOverdue 4本)と `/`→リダイレクトのテストは緑のまま
+- **予想の検証**(後述): 認証実装後に `sail test` → **19失敗・5成功**。ほぼ予想どおり
+  (5成功=Unit4本+`/`リダイレクト1本)。「テストは仕様変更の羅針盤」
+
+## ステップ7-1: 登録・ログイン・ログアウトを作る
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/67e1f8d) / ローカル: `git show 67e1f8d`
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `app/Http/Controllers/Auth/RegisterController.php` | **ジェネレータ**後、**手で編集** |
+| `app/Http/Controllers/Auth/LoginController.php` | **ジェネレータ**後、**手で編集** |
+| `resources/views/auth/register.blade.php` / `login.blade.php` | **手で新規作成** |
+| `routes/web.php` | **手で編集**(guest/authミドルウェアでグループ化) |
+| `resources/views/layouts/app.blade.php` | **手で編集**(@authでユーザーバー) |
+| `database/seeders/DatabaseSeeder.php` | **手で編集**(デモユーザー) |
+
+### 実装の要点
+
+- **登録**: `Password::min(8)` と `confirmed`(`password_confirmation` との一致)。
+  `User::create` に平文passwordを渡すと**hashedキャストが自動でハッシュ化**する。
+  登録後は `auth()->login($user)` + `session()->regenerate()`
+- **ログイン**: `auth()->attempt($credentials)` が email/password を照合
+  (passwordはハッシュ比較)。失敗時のエラーは**「email か password のどちらが違うか
+  を教えない」**一括メッセージにする(攻撃者にヒントを与えない)。成功時に
+  `session()->regenerate()`(セッション固定攻撃対策)
+- **ログアウト**: `auth()->logout()` + `session()->invalidate()` + `regenerateToken()`
+- **ルート保護**: TODO系を `Route::middleware('auth')->group(...)` で囲む。
+  未ログインは自動で `login` という名前のルート(=/login)へリダイレクトされる。
+  登録/ログインは `guest` ミドルウェア(ログイン済みなら弾く)
+
+### 実験7-A: パスワードはハッシュで保存される(わざと平文比較して失敗を見る)
+
+**予想**: DBのpasswordは平文ではなくハッシュ。だから `$user->password === '平文'` は
+false、`Hash::check('平文', $user->password)` だけ true になるはず。
+
+```bash
+./vendor/bin/sail artisan db:seed   # デモユーザー作成
+./vendor/bin/sail artisan tinker --execute="
+\$u = App\Models\User::where('email','demo@example.com')->first();
+echo substr(\$u->password, 0, 7) . PHP_EOL;                       // => \$2y\$12\$ (bcrypt)
+var_dump(\$u->password === 'password');                            // => false
+var_dump(Illuminate\Support\Facades\Hash::check('password', \$u->password)); // => true
+"
+```
+
+- **結果**: 予想どおり。パスワードは `$2y$12$...`(bcrypt、コスト12)で保存され、
+  平文比較は必ず外れる。**万一DBが漏れても、元のパスワードは簡単には復元できない**
+- なぜハッシュか・なぜ「===」で照合してはいけないかは
+  [概念38](laravel-concepts.md#38-パスワードハッシュ)
+
+### 動作確認(ブラウザ/CLI)
+
+- 未ログインで `/todos` → `/login` へ302
+- デモユーザー(demo@example.com / password)でログイン → `/todos` が見え、
+  ヘッダーに「デモユーザー さん」+ログアウト
+- 誤ったパスワード → 「メールアドレスまたはパスワードが正しくありません。」
+- ログアウト → `/login` へ。その後 `/todos` は再び弾かれる
+- 新規登録(name/email/password+確認)→ そのままログイン状態で `/todos` へ
+- **異常系**: パスワード不一致・8文字未満・email重複 → 差し戻し
+
+> バリデーションメッセージのうち登録系はLaravel標準の英語のまま(日本語化は
+> スコープ外、[概念23](laravel-concepts.md#23-バリデーション自動差し戻しold値境界値)参照)。
+> ログイン失敗だけは自前の日本語メッセージにしている。
+
+## ステップ7-2: 既存テストを認証前提に更新する(予想の答え合わせ)
+
+同じコミットに含む。認証実装直後に `sail test` を回すと、予想どおり19本が赤:
+
+```
+tests=24 passed=5 failed=19
+```
+
+- **原因**: Featureテストが未ログインで `/todos` 系を叩き、302(→/login)が返るため
+- **対処**: 各Featureテストの `setUp()` で `$this->actingAs(User::factory()->create())`
+  を呼び、**ログイン状態を作ってからアクセス**する。`actingAs` はパスワード照合を
+  経ずにログイン状態にするテスト用ヘルパ
+- あわせて認証自体のテスト(`AuthTest`)を8本追加(登録・ハッシュ・確認一致・
+  email重複・ログイン成功/失敗・ログアウト・未ログイン誘導)
+
+```bash
+./vendor/bin/sail test   # => 32 passed(既存24 + 認証8)
+```
+
+> **学び**: 大量のテストが赤くなったのは**バグではなく設計変更の現れ**。
+> 「未ログインを弾く」仕様にした以上、テストも「ログインしてからアクセス」に
+> 合わせるのが正しい。テストは仕様の写し鏡であり、変更の影響範囲を可視化してくれる。
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: 手作りの認証(登録・ログイン・ログアウト)を追加"
+```
+
+- **粒度の理由**: 認証は「機能+ルート保護+既存テストの追従」で1つの意味。
+  テスト更新を別コミットにすると、間のコミットが「テストが赤いmain」になってしまう
+  (常に緑を保つ原則)。だからこの3つは同じコミットにまとめた
