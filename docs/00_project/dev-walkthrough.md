@@ -39,6 +39,10 @@
 | US-6 削除する | 4-3([2296628](https://github.com/morisaki-yuichi/todo-app-example2/commit/2296628)) | [#5](https://github.com/morisaki-yuichi/todo-app-example2/pull/5) |
 | US-7 教材 | 各スプリントのdocsコミット全体(このガイド・概念解説集・スクラム記録) | #1〜#5 |
 | (仕上げ) | 4-4 CSS([fa08682](https://github.com/morisaki-yuichi/todo-app-example2/commit/fa08682))、4-5 トップ整理([28914b2](https://github.com/morisaki-yuichi/todo-app-example2/commit/28914b2)) | [#5](https://github.com/morisaki-yuichi/todo-app-example2/pull/5) |
+| **第2部** | | |
+| US-8 期限日 | 5-1([a1f586d](https://github.com/morisaki-yuichi/todo-app-example2/commit/a1f586d))、5-2([6288c60](https://github.com/morisaki-yuichi/todo-app-example2/commit/6288c60)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
+| US-9 絞り込み | 5-3([3357f4a](https://github.com/morisaki-yuichi/todo-app-example2/commit/3357f4a)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
+| US-10 ページネーション | 5-4([8b3b26d](https://github.com/morisaki-yuichi/todo-app-example2/commit/8b3b26d)) | [#6](https://github.com/morisaki-yuichi/todo-app-example2/pull/6) |
 
 ## コミットに残っていない出来事
 
@@ -60,6 +64,11 @@
 | curlの `-X POST` + `-L` がリダイレクト先にもPOSTを強制し419になった | [ステップ3-3](#ステップ3-3-フラッシュメッセージを出す)、[スプリント3レビュー記録](../03_sprint3/sprint-review.md) |
 | わざと失敗実験: @method('PUT')を外すと405(予想的中) | このガイドの [実験4-A](#実験4-a-わざと失敗methodputを外してみる) |
 | わざと失敗実験: GETでは削除できないことの検証(3パターン) | このガイドの [実験4-B](#実験4-b-わざと失敗getリクエストで削除を試みる) |
+| **第2部** | |
+| わざと失敗実験: SQLインジェクション(連結で全件漏れ・プレースホルダで安全) | このガイドの [実験5-A](#実験5-a-sqlインジェクションを安全に体験する) |
+| 標準ページネーションビューがCSSフレームワーク前提で500 → 自前ビュー作成 | [ステップ5-4](#ステップ5-4-ページネーション) |
+| curlはURL直書きの日本語をエンコードしない → `--get --data-urlencode` を使う | [ステップ5-3](#ステップ5-3-状態キーワードの絞り込み) |
+| page=abc はHTTP経由なら200(tinker直渡しはTypeError)= HTTP境界での防御 | [実験5-B](#実験5-b境界-不正な-page-値と-http境界のありがたみ) |
 
 ---
 
@@ -1201,3 +1210,325 @@ git switch main && git pull
 2. 削除を「確認ページ方式」にした理由を、技術制約と安全性の両面から説明せよ
 3. 4スプリントを通して、「動くことをどう確かめるか」について自分の習慣に
    したいことを3つ挙げよ
+
+---
+---
+
+# 第2部: 追加開発編
+
+第1部ではゼロからアプリを作りました。しかし実務のコードの大半は
+**「すでに動いているものへの追加・変更」**です。第2部では同じリポジトリに
+機能を足しながら、追加開発ならではの考え方を追体験します。
+
+## 追加開発の心得(第2部の各ステップに追加される3要素)
+
+| 要素 | 内容 | なぜ必要か |
+|---|---|---|
+| **影響調査** | 書く前に「どのファイルを読み・何に影響するか」を調べる | 新規開発は「白紙に書く」、追加開発は「他人(過去の自分)の絵に描き足す」。まず絵の全体を見ないと、思わぬ場所を塗りつぶす |
+| **既存データへの配慮** | テーブル変更は既存レコードが生き残る形で行う | 本番DBには利用者のデータが入っている。「作り直せばいい」は新規開発でしか通用しない |
+| **リグレッション確認** | 新機能の確認に加えて**既存機能が壊れていないこと**を確認する | 追加開発のバグの多くは「新機能が動かない」ではなく「元の機能が壊れた」として現れる |
+
+> 第1部を写経済みのリポジトリがあれば、そのまま続けられます。
+> mainが第1部完了時点(PR #5マージ地点)であることを `git log` で確認してください。
+
+---
+
+# スプリント5: Readの発展(期限日・絞り込み・ページネーション)
+
+**ゴール**: 稼働中のアプリに、既存データ・既存機能を壊さずに
+「期限日・絞り込み・ページネーション」を追加する
+(計画: [スプリント5バックログ](../05_sprint5/sprint-backlog.md) / 仕様: [qa-log.md](qa-log.md))
+
+**開始前の準備**: `git switch main && git pull` → `git switch -c feature/sprint5-due-date-filter`
+
+## ステップ5-0: 影響調査(コミットなし・でも最重要)
+
+期限日を追加すると何が変わるか、**コードを書く前に**調べます。
+
+```bash
+# 「Todo」に触れているファイルの一覧(=候補地図)
+grep -rl "Todo" app/ resources/views/ routes/ database/ --include="*.php"
+
+# 現在のテーブル構造(変更対象の現状)
+./vendor/bin/sail artisan db:table todos
+```
+
+この調査から導いた変更計画(実録):
+
+| ファイル | 変更内容 |
+|---|---|
+| 新規マイグレーション | due_dateカラム追加(**既存のcreate_todosは触らない** — 適用済みマイグレーションの書き換えは他環境と食い違う事故のもと) |
+| `app/Models/Todo.php` | $fillableとcastsにdue_date |
+| `TodoController` | store/updateのバリデーションにdue_date |
+| `create/edit/show/index` の4ビュー | 入力欄・表示の追加 |
+| `TodoSeeder` | 期限のバリエーション追加 |
+| `routes/web.php` | **変更不要**(絞り込みは既存ルート+クエリパラメータ) |
+| `public/css/app.css` | 期限切れ強調のスタイル |
+
+**なぜ調査を記録するのか**: レビューする人(未来の自分)が「変更漏れがないか」を
+この表と差分を突き合わせて確認できるからです。
+
+## ステップ5-1: due_dateカラムを追加する(追加マイグレーション)
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/a1f586d) / ローカル: `git show a1f586d`
+- 【概念】[追加マイグレーション](laravel-concepts.md#30-追加マイグレーション稼働中テーブルの変更)
+
+### これから何を・なぜやるか
+
+第1部との最大の違いはここ。テーブルに列を足すのに、既存のマイグレーションファイルを
+**書き換えるのではなく**、変更専用のマイグレーションを**新しく積みます**。
+マイグレーションは「DBの変更履歴」— 歴史は書き換えず、追記します。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `database/migrations/XXXX_add_due_date_to_todos_table.php` | **ジェネレータ**で生成後、**手で編集** |
+| `app/Models/Todo.php` | **手で編集**($fillable・castsにdue_date) |
+| `database/seeders/TodoSeeder.php` | **手で編集**(期限3パターン: 期限切れ/過去日だが完了/なし) |
+
+```bash
+./vendor/bin/sail artisan make:migration add_due_date_to_todos_table --table=todos
+```
+
+- `--table=todos`(既存テーブルの変更)であって `--create` ではない点に注意
+- **既存データへの配慮**: `->nullable()` が必須。NOT NULLで追加すると、
+  既存レコードが値を持てず**マイグレーション自体が失敗**します
+
+### 動作確認(CLI): 「データが生き残る」ことを見る
+
+```bash
+./vendor/bin/sail artisan tinker --execute="echo App\Models\Todo::count();"   # 適用前の件数を記録
+./vendor/bin/sail artisan migrate
+./vendor/bin/sail artisan tinker --execute="var_dump(App\Models\Todo::first()->due_date);"
+# => NULL(既存行は期限なしとして生き残っている)
+./vendor/bin/sail artisan migrate:rollback --step=1   # downも検証(データは残り、列だけ消える)
+./vendor/bin/sail artisan migrate
+./vendor/bin/sail artisan db:seed                     # 期限バリエーション入りで入れ直し
+```
+
+### リグレッション確認
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/todos          # => 200
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/todos/create   # => 200
+```
+
+列を足しただけなので画面は変わらないはず — 「変わらないことの確認」もリグレッション確認です。
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: todosにdue_date(期限日)カラムを追加"
+```
+
+- **粒度の理由**: 「データの器の変更」だけで1コミット。画面はまだ触らない。
+  こうすると万一問題が出たとき「器の問題か、画面の問題か」を履歴で切り分けられる
+
+## ステップ5-2: 期限日の入力・表示と期限切れ強調
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/6288c60) / ローカル: `git show 6288c60`
+
+### これから何を・なぜやるか
+
+器(カラム)ができたので、入力(フォーム)と出力(一覧・詳細)を繋ぎます。
+「期限切れかどうか」の判定は**モデルのメソッド `isOverdue()`** に置きます —
+一覧と詳細の2箇所で使う判定ルールをビューにベタ書きすると、
+基準がズレる事故(DRY違反)になるからです。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `app/Models/Todo.php` | **手で編集**(isOverdue()メソッド追加) |
+| `app/Http/Controllers/TodoController.php` | **手で編集**(store/updateの検証に `'due_date' => ['nullable', 'date']`) |
+| `create/edit/show/index` の4ビュー | **手で編集**(入力欄・表示。影響調査の表どおり) |
+| `public/css/app.css` | **手で編集**(.due / .overdue) |
+
+### 編集の順序とその理由
+
+1. **モデル**の `isOverdue()`(判定ルールが先。「今日が期限」は期限切れに含めない=
+   `lt(today())` という境界の決定もここで言語化する)
+2. **コントローラ**のバリデーション(入口の防御)
+3. **フォーム2枚**(`<input type="date">`。editは `old('due_date', $todo->due_date?->format('Y-m-d'))` —
+   input[type=date]の値は `Y-m-d` 文字列なのでCarbonから形式を合わせる)
+4. **表示2枚+CSS**(一覧は期限切れだけ赤強調。**完了済みの過去日は強調しない**のが仕様)
+
+### 動作確認(ブラウザ)
+
+シーダーの3件がそのまま試験データです:
+- 「牛乳を買う」(未完了・昨日期限)→ 一覧と詳細に**赤い「期限切れ」**
+- 「Laravel教材…」(完了・昨日期限)→ 期限は出るが**強調されない**
+- 「部屋の掃除」(期限なし)→ 期限表示自体が出ない
+- 新規作成で期限 `2026-07-10` を入れる → 詳細・一覧に反映
+- **異常系**: due_dateに手打ちで不正な値(ブラウザのdate入力を避けてcurlで
+  `due_date=あした` 等)→ `The due date field must be a valid date.`
+
+### リグレッション確認
+
+```bash
+for u in /todos /todos/create /todos/<実ID> /todos/<実ID>/edit /todos/<実ID>/delete; do
+  curl -s -o /dev/null -w "$u => %{http_code}\n" "http://localhost:8080$u"
+done   # すべて200のまま
+```
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: 期限日の入力・表示と期限切れの強調表示を追加"
+```
+
+- **粒度の理由**: 「利用者から見て期限日機能が使える」単位。器(5-1)と分けたので、
+  この差分には「見た目と入口」だけが写っている
+
+## ステップ5-3: 状態・キーワードの絞り込み
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/3357f4a) / ローカル: `git show 3357f4a`
+- 【概念】[クエリパラメータとGET絞り込み](laravel-concepts.md#31-クエリパラメータとget絞り込み) / [SQLインジェクション](laravel-concepts.md#32-sqlインジェクションとプレースホルダ)
+
+### これから何を・なぜやるか
+
+一覧に「状態(すべて/未完了/完了)」と「キーワード(タイトル・内容の部分一致)」の
+絞り込みを付けます。**ルートは増やしません** — 既存の `GET /todos` に
+クエリパラメータ(`?status=open&keyword=牛乳`)を足すだけ。絞り込みは
+「見るだけ」の操作なので[GETが正解](laravel-concepts.md#21-httpメソッドの使い分けとgetでデータを変えない原則)です
+(URLに条件が乗る=共有・ブックマークできる利点も付いてくる)。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `TodoController::index()` | **手で編集**(クエリ組み立て) |
+| `resources/views/todos/index.blade.php` | **手で編集**(GETフォーム+0件時の文言分岐) |
+| `public/css/app.css` | **手で編集**(.filter) |
+
+### 実装の要点
+
+- `index(Request $request)` に引数を追加し、`$request->query('status', 'all')` で受ける
+- **orWhereはクロージャで括る**:
+  ```php
+  $query->where('completed', false)   // 状態の条件
+        ->where(function ($q) use ($keyword) {   // ← これで括らないと…
+            $q->where('title', 'like', "%{$keyword}%")
+              ->orWhere('description', 'like', "%{$keyword}%");
+        });
+  ```
+  括らないと `完了=false AND title LIKE .. OR description LIKE ..` となり、
+  ORが状態条件を打ち消して**完了済みも表示されるバグ**になります(演算子の優先順位)
+- 想定外のstatus値(`?status=hack`)は「すべて」として扱う(不正な値で500にしない)
+
+### 実験5-A: SQLインジェクションを安全に体験する
+
+**予想を先に書く**(Try T-7): キーワードに `' OR '1'='1` を入れたとき、
+文字列連結でSQLを組むと**全件が漏れる**はず。プレースホルダなら「そういう名前の
+TODOを探す」だけで0件のはず。
+
+tinkerで**SELECTのみ**(データは変えない)で比較します:
+
+```php
+$kw = "' OR '1'='1";
+DB::select("select * from todos where title like '%{$kw}%'");   // (1) 危険: 連結
+DB::select("select * from todos where title like ?", ["%{$kw}%"]); // (2) 安全: プレースホルダ
+App\Models\Todo::where('title', 'like', "%{$kw}%")->count();      // (3) Eloquent
+```
+
+**結果**(実録): (1) は**全12件が漏れた**(`OR '1'='1'` が常に真になりWHEREが無効化)。
+(2) と (3) は**0件**(入力はただの文字列として扱われ、そんなタイトルは無い)。
+本アプリの絞り込みは(3)のEloquentを使っているので安全 — **なぜ安全かを実演で確認**しました。
+
+> この実験はコミットしません。tinkerでSELECTしただけなのでデータは無傷
+> (`git status` が綺麗なことを確認して次へ)。
+
+### 動作確認(CLI): curlの日本語エンコードの罠
+
+```bash
+# ✕ URLに日本語を直書きすると、curlはエンコードせず送るためヒットしない
+curl -s "http://localhost:8080/todos?keyword=牛乳"        # 0件になってしまう
+# ○ --get --data-urlencode で正しくエンコードする
+curl -s --get --data-urlencode "keyword=牛乳" http://localhost:8080/todos
+```
+
+- 状態: `?status=done` で完了のみ、`?status=open` で未完了のみ
+- 組み合わせ: `status=done&keyword=教材` で1件
+- **0件**: 存在しないキーワード → 「条件に一致するTODOがありません。」
+  (絞り込み時と全体0件で文言を出し分けている)
+- **異常系**: `?status=hack` → 200(「すべて」扱い)
+
+### リグレッション確認
+
+絞り込みなしの `/todos` が従来どおり全件出ること、既存CRUDが200であること。
+
+### ここでコミット
+
+```bash
+git add -A && git commit -m "feat: 一覧に状態・キーワードの絞り込みを追加"
+```
+
+## ステップ5-4: ページネーション
+
+- 差分: [GitHubで見る](https://github.com/morisaki-yuichi/todo-app-example2/commit/8b3b26d) / ローカル: `git show 8b3b26d`
+- 【概念】[ページネーションとwithQueryString](laravel-concepts.md#33-ページネーションとwithquerystring)
+
+### これから何を・なぜやるか
+
+件数が増えても見通せるよう、一覧を5件/ページに分割します。`get()` を
+`paginate(5)` に変えるのが中心。**絞り込み条件をページ移動でも保つ**のが要点です。
+
+### 足場の作り方
+
+| ファイル | 作り方 |
+|---|---|
+| `TodoController::index()` | **手で編集**(`get()` → `paginate(5)->withQueryString()`) |
+| `resources/views/todos/index.blade.php` | **手で編集**(`$todos->links(...)`) |
+| `resources/views/pagination/simple.blade.php` | **手で新規作成**(自前のページ送りビュー) |
+| `database/seeders/TodoSeeder.php` | **手で編集**(12件に増やす) |
+| `public/css/app.css` | **手で編集**(nav.pagination) |
+
+### 実録トラブル: 標準ページネーションビューが見つからない
+
+最初 `$todos->links('pagination::simple-default')` と書いたら
+**`View [simple-default] not found` で全ページ500**になりました。
+
+- **調査**: 500ページのエラー1行目 = ビューが見つからない。Laravelの標準
+  ページネーションビューは**Tailwind/Bootstrap前提**の名前しかない
+- **対処**: 本プロジェクトはCSSフレームワーク不使用なので、paginatorのメソッド
+  (`onFirstPage()` / `hasMorePages()` / `previousPageUrl()` / `nextPageUrl()` /
+  `currentPage()` / `lastPage()`)で**自前のビュー**を書き、`links('pagination.simple')`
+  で指定した
+
+### `withQueryString()` を忘れると
+
+ページ移動リンクに絞り込み条件(`status`/`keyword`)が乗らず、
+**2ページ目に行くと絞り込みが解除される**バグになります。`withQueryString()` を
+付けると現在のクエリパラメータをページリンクに引き継げます。
+
+### 動作確認(CLI)
+
+```bash
+for p in 1 2 3; do echo -n "page=$p: "; curl -s "http://localhost:8080/todos?page=$p" | grep -c '<li class'; done
+# => 5 / 5 / 2(合計12)
+curl -s --get --data-urlencode "status=open" http://localhost:8080/todos | grep -oE 'page=2[^"]*'
+# => ページリンクに status=open が乗っている
+```
+
+### 実験5-B(境界): 不正な page 値と、HTTP境界のありがたみ
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:8080/todos?page=abc"   # => 200
+curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:8080/todos?page=999"   # => 200
+```
+
+面白い実録: **tinkerで** `paginate(5, ['*'], 'page', 'abc')` と page に直接 'abc' を
+渡すと `TypeError: Unsupported operand types: string - int` で落ちます。
+しかし**HTTP経由**の `?page=abc` は200 — Laravelがリクエストのpage値を
+`resolveCurrentPage()` で検証し、不正なら1に丸めているからです。
+**「フレームワークが入口(HTTP境界)で守ってくれている」**ことの実演であり、
+逆に言えば「その守りを迂回すると同じ脆さが顔を出す」教訓でもあります。
+
+### リグレッション確認+ここでコミット
+
+既存CRUD一式が200のままであることを確認してから:
+
+```bash
+git add -A && git commit -m "feat: 一覧にページネーションを追加(5件/ページ)"
+```

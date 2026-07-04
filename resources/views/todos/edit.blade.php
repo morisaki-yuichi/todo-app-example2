@@ -28,6 +28,11 @@
             <textarea id="description" name="description" rows="5" cols="40">{{ old('description', $todo->description) }}</textarea>
         </p>
         <p>
+            <label for="due_date">期限日(任意)</label><br>
+            {{-- input[type=date]の値はY-m-d形式の文字列。Carbonからformatで合わせる --}}
+            <input type="date" id="due_date" name="due_date" value="{{ old('due_date', $todo->due_date?->format('Y-m-d')) }}">
+        </p>
+        <p>
             <button type="submit">更新する</button>
         </p>
     </form>

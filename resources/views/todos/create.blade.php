@@ -26,6 +26,11 @@
             <textarea id="description" name="description" rows="5" cols="40">{{ old('description') }}</textarea>
         </p>
         <p>
+            <label for="due_date">期限日(任意)</label><br>
+            {{-- type="date" はブラウザ標準のカレンダーUI(JS不要) --}}
+            <input type="date" id="due_date" name="due_date" value="{{ old('due_date') }}">
+        </p>
+        <p>
             <button type="submit">作成する</button>
         </p>
     </form>

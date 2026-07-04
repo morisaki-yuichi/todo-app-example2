@@ -46,6 +46,18 @@ li.completed a {
     color: #888;
 }
 
+/* 期限表示。期限切れ(未完了+過去日)は赤で強調 */
+.due {
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.due.overdue,
+.overdue-label {
+    color: #d93025;
+    font-weight: bold;
+}
+
 /* フォーム */
 input[type="text"], textarea {
     font: inherit;
@@ -69,6 +81,38 @@ button {
 
 button:hover {
     background: #235a94;
+}
+
+/* 絞り込みフォーム */
+form.filter {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+form.filter select, form.filter input[type="text"] {
+    font: inherit;
+    padding: 4px 8px;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+}
+
+/* ページネーション */
+nav.pagination {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-top: 16px;
+}
+
+nav.pagination .disabled {
+    color: #bbb;
+}
+
+nav.pagination .current {
+    color: #666;
+    font-size: 0.9rem;
 }
 
 /* フラッシュメッセージ(操作成功の通知) */
