@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Todo extends Model
 {
+    /** @use HasFactory<\Database\Factories\TodoFactory> */
+    use HasFactory;
+
     /**
      * ユーザー入力からの一括代入(マスアサインメント)を許可するカラム。
      * ここに無いカラムはcreate()/update()の配列指定で書き込めない(安全側に倒す)。
