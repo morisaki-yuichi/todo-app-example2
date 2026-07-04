@@ -3,9 +3,9 @@
 use App\Http\Controllers\TodoController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+// トップはTODO一覧へ(このアプリの「顔」は一覧のため)。301ではなく302なのは
+// 恒久的な転送のキャッシュ(ブラウザが/を覚え込む)を避ける開発中の定石
+Route::redirect('/', '/todos');
 
 Route::get('/todos', [TodoController::class, 'index'])->name('todos.index');
 // 「/todos/create」は「/todos/{todo}」より先に定義する。
