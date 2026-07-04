@@ -32,7 +32,14 @@ class TodoController extends Controller
      */
     public function store(Request $request)
     {
-        $todo = Todo::create($request->only(['title', 'description']));
+        // 違反時はここで処理が止まり、エラーと入力値(old)を持って
+        // 自動でフォームへ302リダイレクトされる(自動差し戻し)
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:100'],
+            'description' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $todo = Todo::create($validated);
 
         // PRGパターン: POSTの結果は「リダイレクト」で返す。
         // 直接HTMLを返すと、ブラウザのリロードでPOSTが再送されて二重登録される
