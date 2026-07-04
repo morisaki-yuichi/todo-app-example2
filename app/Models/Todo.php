@@ -13,6 +13,7 @@ class Todo extends Model
     protected $fillable = [
         'title',
         'description',
+        'due_date',
         'completed',
     ];
 
@@ -24,6 +25,7 @@ class Todo extends Model
     {
         return [
             'completed' => 'boolean',
+            'due_date' => 'date', // DBのdate文字列をCarbon(日付オブジェクト)として扱う
         ];
     }
 }
