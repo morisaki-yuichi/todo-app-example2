@@ -11,6 +11,11 @@
         <h1>{{ config('app.name') }}</h1>
     </header>
     <main>
+        {{-- 操作成功メッセージ(フラッシュデータ)。どの画面でも出せるよう共通レイアウトに置く --}}
+        @if (session('status'))
+            <p role="status">{{ session('status') }}</p>
+        @endif
+
         @yield('content')
     </main>
 </body>

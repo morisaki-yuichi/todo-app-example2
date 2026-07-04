@@ -5,6 +5,8 @@
 @section('content')
     <h2>TODO一覧</h2>
 
+    <p><a href="{{ route('todos.create') }}">+ 新規作成</a></p>
+
     @if ($todos->isEmpty())
         <p>TODOがありません。</p>
     @else

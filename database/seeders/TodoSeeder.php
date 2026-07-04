@@ -17,22 +17,30 @@ class TodoSeeder extends Seeder
         // 再実行しても増殖しないよう、入れ直す
         Todo::query()->delete();
 
-        Todo::create([
+        // created_atを意図的にずらす:全件が同一秒だと「新しい順」の並びを
+        // 目視で検証できない(同値ソートは順序不定)ため。スプリント2レトロのTry
+        $todo = new Todo([
             'title' => '牛乳を買う',
             'description' => "低脂肪ではなく普通のもの。\nついでに卵も。",
             'completed' => false,
         ]);
+        $todo->created_at = now()->subDays(2);
+        $todo->save();
 
-        Todo::create([
+        $todo = new Todo([
             'title' => 'Laravel教材のスプリント1を写経する',
             'description' => '環境構築とREADMEの手順を追体験する',
             'completed' => true,
         ]);
+        $todo->created_at = now()->subDay();
+        $todo->save();
 
-        Todo::create([
+        $todo = new Todo([
             'title' => '部屋の掃除',
             'description' => null, // 内容なしのTODO(詳細画面の表示確認用)
             'completed' => false,
         ]);
+        $todo->created_at = now();
+        $todo->save();
     }
 }
